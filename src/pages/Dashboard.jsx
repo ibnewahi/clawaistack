@@ -15,7 +15,7 @@ import {
   Clock,
   CircleDot,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import MetricCard from '../components/MetricCard'
 import AIClawCard from '../components/AIClawCard'
 import InsightItem from '../components/InsightItem'
@@ -28,38 +28,6 @@ const navItems = [
   { id: 'integrations', label: 'Integrations', icon: Plug, path: '/dashboard' },
   { id: 'reports', label: 'Reports', icon: FileBarChart, path: '/dashboard' },
   { id: 'settings', label: 'Settings', icon: Settings, path: '/dashboard' },
-]
-
-const metrics = [
-  {
-    title: 'Cash Balance',
-    value: '$428,520',
-    change: '+8.2%',
-    trend: 'up',
-    icon: TrendingUp,
-  },
-  {
-    title: 'Monthly Revenue',
-    value: '$1.24M',
-    change: '+12.4%',
-    trend: 'up',
-    icon: TrendingUp,
-  },
-  {
-    title: 'Gross Margin',
-    value: '42.8%',
-    change: '-1.7%',
-    trend: 'down',
-    alert: true,
-    icon: AlertTriangle,
-  },
-  {
-    title: 'Overdue AR',
-    value: '$42,100',
-    change: '12 invoices',
-    trend: 'neutral',
-    icon: Clock,
-  },
 ]
 
 const aiClaws = [
@@ -160,6 +128,32 @@ export default function Dashboard() {
   const [activeNav, setActiveNav] = useState('dashboard');
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [metrics, setMetrics] = useState([]);
+  const [loadingMetrics, setLoadingMetrics] = useState(true);
+
+  useEffect(() => {
+    fetchMetrics();
+  }, []);
+
+  const fetchMetrics = async () => {
+    try {
+      setLoadingMetrics(true);
+      const { data, error } = await supabase
+        .from('dashboard_metrics')
+        .select('*')
+        .order('order_index', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching metrics:', error.message);
+      } else {
+        setMetrics(data || []);
+      }
+    } catch (err) {
+      console.error('Unexpected error loading metrics:', err);
+    } finally {
+      setLoadingMetrics(false);
+    }
+  };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -218,11 +212,29 @@ export default function Dashboard() {
         </header>
 
         <main className="flex-1 overflow-y-auto scrollbar-thin p-6">
-          <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {metrics.map((metric) => (
-              <MetricCard key={metric.title} {...metric} />
-            ))}
-          </section>
+        <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  {loadingMetrics ? (
+    Array.from({ length: 4 }).map((_, idx) => (
+      <div
+        key={idx}
+        className="h-28 animate-pulse rounded-2xl border border-surface-border bg-surface/50 p-5"
+      >
+        <div className="h-4 w-1/2 rounded bg-zinc-800"></div>
+        <div className="mt-4 h-8 w-3/4 rounded bg-zinc-800"></div>
+      </div>
+    ))
+  ) : (
+    metrics.map((metric) => (
+      <MetricCard
+        key={metric.id}
+        title={metric.title}
+        value={metric.value}
+        change={metric.change_percent}
+        isPositive={metric.is_positive}
+      />
+    ))
+  )}
+</section>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
             <section className="xl:col-span-2">
