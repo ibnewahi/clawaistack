@@ -7,21 +7,20 @@ export default function ProtectedRoute({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Read session directly from local storage on mount
-    supabase.auth.getSession().then(({ data: { session: currentSession }, error }) => {
-      if (error) {
-        console.error('Supabase session fetch error:', error.message);
-      }
-      console.log('Restored session on refresh:', currentSession);
+    // 1. Fetch persistent session directly from storage
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
       setLoading(false);
     });
 
-    // Listen for future state changes (sign in / sign out)
+    // 2. Listen ONLY for actual auth events (sign in, sign out)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      setSession(currentSession);
+    } = supabase.auth.onAuthStateChange((event, currentSession) => {
+      // Ignore INITIAL_SESSION so it doesn't overwrite getSession() with null
+      if (event !== 'INITIAL_SESSION') {
+        setSession(currentSession);
+      }
     });
 
     return () => subscription.unsubscribe();
