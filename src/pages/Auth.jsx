@@ -26,7 +26,7 @@ export default function Auth() {
         },
       });
       if (error) alert(error.message);
-      else alert('Check your email for confirmation link!');
+      else alert ('Account created successfully!');
     } else {
       const { error } = await supabase.auth.signInWithPassword({
         email,
