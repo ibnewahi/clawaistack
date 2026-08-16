@@ -7,7 +7,7 @@ export default function ProtectedRoute({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Check active session on initial load
+    // 1. Get initial session stored in localStorage
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
@@ -16,8 +16,8 @@ export default function ProtectedRoute({ children }) {
     // 2. Listen for auth state changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      setSession(currentSession);
       setLoading(false);
     });
 
