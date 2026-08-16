@@ -7,21 +7,29 @@ export default function ProtectedRoute({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Fetch current stored session from localStorage
+    let isMounted = true;
+
+    // 1. Fetch existing session from localStorage on initial render
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-      setSession(currentSession);
-      setLoading(false);
+      if (isMounted) {
+        setSession(currentSession);
+        setLoading(false);
+      }
     });
 
-    // 2. Listen for auth state changes
+    // 2. Listen for auth changes (sign in, sign out) without clearing loading early
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      setSession(currentSession);
-      setLoading(false);
+      if (isMounted) {
+        setSession(currentSession);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   if (loading) {
