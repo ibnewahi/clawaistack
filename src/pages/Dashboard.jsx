@@ -230,7 +230,7 @@ export default function Dashboard() {
         title={metric.title}
         value={metric.value}
         change={metric.change_percent}
-        isPositive={metric.is_positive}
+trend={metric.is_positive ? 'up' : 'down'}
       />
     ))
   )}
