@@ -205,6 +205,12 @@ export default function Dashboard() {
               <Bell className="h-4 w-4" />
               <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-accent" />
             </button>
+            <button
+  onClick={handleSignOut}
+  className="h-9 px-3 text-xs font-medium text-zinc-300 rounded-lg border border-surface-border bg-surface hover:bg-zinc-800 hover:text-white transition"
+>
+  Sign Out
+</button>
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/20 text-sm font-semibold text-accent">
               M
             </div>
