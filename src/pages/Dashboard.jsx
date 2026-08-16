@@ -1,3 +1,5 @@
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
 import {
   LayoutDashboard,
   Bot,
@@ -153,9 +155,16 @@ On behalf of [Your Company Name]`,
 }
 
 export default function Dashboard() {
-  const [activeNav, setActiveNav] = useState('dashboard')
-  const [emailOpen, setEmailOpen] = useState(false)
-  const [emailSent, setEmailSent] = useState(false)
+  const navigate = useNavigate();
+
+  const [activeNav, setActiveNav] = useState('dashboard');
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate('/auth');
+  };
 
   const handleReviewEmail = () => {
     setEmailOpen(true)
