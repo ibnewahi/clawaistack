@@ -9,14 +9,17 @@ export default function Auth() {
   const [lastName, setLastName] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
   const navigate = useNavigate();
 
-  // Redirect to dashboard if session already exists in localStorage
+  // Redirect to dashboard if session already exists
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         navigate('/dashboard', { replace: true });
+      } else {
+        setCheckingAuth(false);
       }
     });
   }, [navigate]);
@@ -59,6 +62,14 @@ export default function Auth() {
 
     setLoading(false);
   };
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white text-sm">
+        Authenticating...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4">
