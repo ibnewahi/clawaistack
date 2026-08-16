@@ -7,9 +7,9 @@ export default function ProtectedRoute({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Get initial session stored in localStorage
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    // 1. Fetch current stored session from localStorage
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      setSession(currentSession);
       setLoading(false);
     });
 
