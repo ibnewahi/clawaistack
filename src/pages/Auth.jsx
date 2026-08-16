@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
@@ -12,12 +12,21 @@ export default function Auth() {
 
   const navigate = useNavigate();
 
+  // Redirect to dashboard if session already exists in localStorage
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        navigate('/dashboard', { replace: true });
+      }
+    });
+  }, [navigate]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     if (isSignUp) {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -30,19 +39,20 @@ export default function Auth() {
 
       if (error) {
         alert(error.message);
-      } else {
-        alert('Account created successfully!');
+      } else if (data?.session) {
         navigate('/dashboard');
+      } else {
+        alert('Check your email for the confirmation link!');
       }
     } else {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
         alert(error.message);
-      } else {
+      } else if (data?.session) {
         navigate('/dashboard');
       }
     }
@@ -110,7 +120,7 @@ export default function Auth() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white transition hover:bg-blue-500"
+            className="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-50"
           >
             {loading ? 'Processing...' : isSignUp ? 'Sign Up' : 'Sign In'}
           </button>
