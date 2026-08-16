@@ -1,87 +1,120 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
 
 export default function Auth() {
-  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
-    // Simulated auth flow — redirects to dashboard on submit
-    setTimeout(() => {
-      setLoading(false);
-      navigate('/dashboard');
-    }, 800);
+    if (isSignUp) {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            first_name: firstName,
+            last_name: lastName,
+          },
+        },
+      });
+      if (error) alert(error.message);
+      else alert('Check your email for confirmation link!');
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) alert(error.message);
+      else alert('Signed in successfully!');
+    }
+
+    setLoading(false);
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-white">
-      <div className="w-full max-w-md space-y-8 rounded-2xl border border-slate-800 bg-slate-900/80 p-8 shadow-xl backdrop-blur-sm">
-        <div className="text-center">
-          <Link to="/" className="text-2xl font-bold tracking-tight text-white">
-            ClawAIStack
-          </Link>
-          <h2 className="mt-6 text-3xl font-extrabold text-white">
-            {isSignUp ? 'Create an account' : 'Sign in to your account'}
-          </h2>
-          <p className="mt-2 text-sm text-slate-400">
-            {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-            <button
-              type="button"
-              onClick={() => setIsSignUp(!isSignUp)}
-              className="font-medium text-blue-400 hover:text-blue-300 transition"
-            >
-              {isSignUp ? 'Sign in' : 'Sign up'}
-            </button>
-          </p>
-        </div>
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-xl">
+        <h2 className="text-2xl font-bold text-center mb-6">
+          {isSignUp ? 'Create an Account' : 'Welcome Back'}
+        </h2>
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="space-y-4 rounded-md shadow-sm">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
-                Email address
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2.5 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="you@example.com"
-              />
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {isSignUp && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">First Name</label>
+                <input
+                  type="text"
+                  required
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2.5 text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Last Name</label>
+                <input
+                  type="text"
+                  required
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2.5 text-white"
+                />
+              </div>
             </div>
+          )}
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
-                Password
-              </label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2.5 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="••••••••"
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Email</label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2.5 text-white"
+              placeholder="you@example.com"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Password</label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2.5 text-white"
+              placeholder="••••••••"
+            />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50"
+            className="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white transition hover:bg-blue-500"
           >
             {loading ? 'Processing...' : isSignUp ? 'Sign Up' : 'Sign In'}
           </button>
         </form>
 
-        <div className="text-center">
+        <div className="mt-4 text-center">
+          <button
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-xs text-slate-400 hover:text-white"
+          >
+            {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+          </button>
+        </div>
+
+        <div className="mt-6 text-center">
           <Link to="/" className="text-xs text-slate-500 hover:text-slate-400">
             ← Back to Home
           </Link>
