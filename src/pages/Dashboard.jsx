@@ -1,126 +1,38 @@
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import {
-  LayoutDashboard,
-  Bot,
-  Plug,
-  FileBarChart,
-  Settings,
-  Bell,
-  Search,
-  TrendingUp,
-  AlertTriangle,
-  Sparkles,
-  Mail,
-  Clock,
-  CircleDot,
-} from 'lucide-react'
-import { useEffect, useState } from 'react'
-import MetricCard from '../components/MetricCard'
-import AIClawCard from '../components/AIClawCard'
-import InsightItem from '../components/InsightItem'
-import EmailSlideOver from '../components/EmailSlideOver'
-import Sidebar from '../components/Sidebar'
+import Sidebar from '../components/Sidebar';
+import MetricCard from '../components/MetricCard';
+import AIClawCard from '../components/AIClawCard';
+import InsightItem from '../components/InsightItem';
+import EmailSlideOver from '../components/EmailSlideOver';
+import { Search, Bell } from 'lucide-react';
 
 const navItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-  { id: 'ai-claws', label: 'AI Claws', icon: Bot, path: '/dashboard' },
-  { id: 'integrations', label: 'Integrations', icon: Plug, path: '/dashboard' },
-  { id: 'reports', label: 'Reports', icon: FileBarChart, path: '/dashboard' },
-  { id: 'settings', label: 'Settings', icon: Settings, path: '/dashboard' },
-]
-
-const aiClaws = [
-  {
-    name: 'CFO Claw',
-    description: 'Financial forecasting & strategic insights',
-    status: 'active',
-    tasksToday: 14,
-    icon: Sparkles,
-  },
-  {
-    name: 'AR Collector Claw',
-    description: 'Automated invoice follow-ups & collections',
-    status: 'action-needed',
-    tasksToday: 8,
-    icon: Mail,
-  },
-  {
-    name: 'Bookkeeper Claw',
-    description: 'Transaction categorization & reconciliation',
-    status: 'idle',
-    tasksToday: 0,
-    icon: FileBarChart,
-  },
-]
-
-const insights = [
-  {
-    id: 1,
-    type: 'collection',
-    title: 'Overdue invoice detected — Acme Corp',
-    description:
-      'Invoice #INV-2847 ($12,400) is 18 days past due. AI drafted a collection email ready for your review.',
-    time: '12 min ago',
-    priority: 'high',
-    actionLabel: 'Review Email',
-  },
-  {
-    id: 2,
-    type: 'forecast',
-    title: 'Cash runway extended by 2 weeks',
-    description:
-      'CFO Claw updated your 90-day forecast based on recent receivables acceleration.',
-    time: '1 hr ago',
-    priority: 'normal',
-    actionLabel: 'View Forecast',
-  },
-  {
-    id: 3,
-    type: 'margin',
-    title: 'Gross margin dip flagged in Q3',
-    description:
-      'COGS increased 3.2% in the Services line. Bookkeeper Claw identified 4 uncategorized vendor charges.',
-    time: '3 hrs ago',
-    priority: 'medium',
-    actionLabel: 'Investigate',
-  },
-  {
-    id: 4,
-    type: 'reconciliation',
-    title: 'Bank reconciliation complete',
-    description:
-      'Bookkeeper Claw matched 847 transactions across 3 accounts with 99.7% accuracy.',
-    time: '5 hrs ago',
-    priority: 'low',
-    actionLabel: 'View Report',
-  },
-]
+  { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
+  { id: 'claws', label: 'AI Claws', badge: '3', icon: 'Cpu' },
+  { id: 'integrations', label: 'Integrations', icon: 'Layers' },
+  { id: 'reports', label: 'Reports', icon: 'FileText' },
+  { id: 'settings', label: 'Settings', icon: 'Settings' }
+];
 
 const collectionEmail = {
-  to: 'accounts@acmecorp.com',
-  subject: 'Payment Reminder — Invoice #INV-2847 ($12,400)',
+  subject: 'URGENT: Overdue Invoice #INV-2847 — Acme Corp',
+  recipient: 'accounts@acmecorp.com',
   body: `Dear Acme Corp Accounts Team,
 
-I hope this message finds you well. I'm reaching out regarding Invoice #INV-2847 for $12,400.00, which was due on July 28, 2026 and is now 18 days past due.
+Our records indicate that Invoice #INV-2847 for $12,400.00 was due 18 days ago (July 30, 2026).
 
-We value our partnership and understand that processing delays can happen. To help us keep your account in good standing, we'd appreciate payment at your earliest convenience.
+To avoid any disruption to your active ClawAI Stack automation services, please review the attached invoice and confirm your scheduled payment date.
 
-Payment details:
-• Invoice: #INV-2847
-• Amount Due: $12,400.00
-• Original Due Date: July 28, 2026
-
-If payment has already been sent, please disregard this notice and share the remittance details so we can update our records.
-
-Should you have any questions or need to discuss payment arrangements, please don't hesitate to reply to this email.
+If payment has already been processed, please reply with the payment reference details so we can update our records.
 
 Thank you for your prompt attention to this matter.
 
 Best regards,
 ClawAI Stack Finance Team
-On behalf of [Your Company Name]`,
-}
+On behalf of [Your Company Name]`
+};
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -131,8 +43,15 @@ export default function Dashboard() {
   const [metrics, setMetrics] = useState([]);
   const [loadingMetrics, setLoadingMetrics] = useState(true);
 
+  const [aiClaws, setAiClaws] = useState([]);
+  const [insights, setInsights] = useState([]);
+  const [loadingClaws, setLoadingClaws] = useState(true);
+  const [loadingInsights, setLoadingInsights] = useState(true);
+
   useEffect(() => {
     fetchMetrics();
+    fetchAiClaws();
+    fetchInsights();
   }, []);
 
   const fetchMetrics = async () => {
@@ -180,20 +99,108 @@ export default function Dashboard() {
     }
   };
 
+  const fetchAiClaws = async () => {
+    try {
+      setLoadingClaws(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('ai_claws')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching AI claws:', error.message);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        const defaultClaws = [
+          { user_id: user.id, name: 'CFO Claw', description: 'Financial forecasting & strategic insights', status: 'active', tasks_today: 14, icon_name: 'Sparkles' },
+          { user_id: user.id, name: 'AR Collector Claw', description: 'Automated invoice follow-ups & collections', status: 'action-needed', tasks_today: 8, icon_name: 'Mail' },
+          { user_id: user.id, name: 'Bookkeeper Claw', description: 'Transaction categorization & reconciliation', status: 'idle', tasks_today: 0, icon_name: 'FileBarChart' }
+        ];
+
+        const { data: insertedData, error: insertError } = await supabase
+          .from('ai_claws')
+          .insert(defaultClaws)
+          .select();
+
+        if (insertError) {
+          console.error('Error auto-seeding AI claws:', insertError.message);
+        } else {
+          setAiClaws(insertedData || []);
+        }
+      } else {
+        setAiClaws(data);
+      }
+    } catch (err) {
+      console.error('Unexpected error loading AI claws:', err);
+    } finally {
+      setLoadingClaws(false);
+    }
+  };
+
+  const fetchInsights = async () => {
+    try {
+      setLoadingInsights(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('insights_feed')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching insights:', error.message);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        const defaultInsights = [
+          { user_id: user.id, type: 'collection', title: 'Overdue invoice detected — Acme Corp', description: 'Invoice #INV-2847 ($12,400) is 18 days past due. AI drafted a collection email ready for your review.', action_text: 'Review Email', action_type: 'email', time_ago: '12 min ago' },
+          { user_id: user.id, type: 'forecast', title: 'Cash runway extended by 2 weeks', description: 'CFO Claw updated your 90-day forecast based on recent receivables acceleration.', action_text: 'View Forecast', action_type: 'forecast', time_ago: '1 hr ago' },
+          { user_id: user.id, type: 'alert', title: 'Gross margin dip flagged in Q3', description: 'COGS increased 3.2% in the Services line. Bookkeeper Claw identified 4 uncategorized vendor charges.', action_text: 'Investigate', action_type: 'audit', time_ago: '3 hrs ago' },
+          { user_id: user.id, type: 'reconciliation', title: 'Bank reconciliation complete', description: 'Bookkeeper Claw matched 847 transactions across 3 accounts with 99.7% accuracy.', action_text: 'View Report', action_type: 'report', time_ago: '5 hrs ago' }
+        ];
+
+        const { data: insertedData, error: insertError } = await supabase
+          .from('insights_feed')
+          .insert(defaultInsights)
+          .select();
+
+        if (insertError) {
+          console.error('Error auto-seeding insights:', insertError.message);
+        } else {
+          setInsights(insertedData || []);
+        }
+      } else {
+        setInsights(data);
+      }
+    } catch (err) {
+      console.error('Unexpected error loading insights:', err);
+    } finally {
+      setLoadingInsights(false);
+    }
+  };
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate('/auth');
   };
 
-  const handleReviewEmail = () => {
-    setEmailOpen(true)
-    setEmailSent(false)
-  }
+  const handleInsightAction = (actionType) => {
+    if (actionType === 'email') {
+      setEmailOpen(true);
+    }
+  };
 
   const handleApproveSend = () => {
-    setEmailSent(true)
-    setTimeout(() => setEmailOpen(false), 1500)
-  }
+    setEmailSent(true);
+    setTimeout(() => setEmailOpen(false), 1500);
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -217,103 +224,97 @@ export default function Dashboard() {
               <input
                 type="text"
                 placeholder="Search..."
-                className="h-9 w-56 rounded-lg border border-surface-border bg-surface pl-9 pr-4 text-sm text-zinc-300 placeholder:text-zinc-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                className="h-9 w-56 rounded-lg border border-surface-border bg-surface pl-9 pr-4 text-sm text-zinc-300 placeholder-zinc-500 focus:border-accent focus:outline-none"
               />
             </div>
-            <button className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-surface-border bg-surface text-zinc-400 transition hover:border-accent/40 hover:text-accent">
+            <button className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-surface-border bg-surface text-zinc-400 hover:text-white">
               <Bell className="h-4 w-4" />
               <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-accent" />
             </button>
             <button
-  onClick={handleSignOut}
-  className="h-9 px-3 text-xs font-medium text-zinc-300 rounded-lg border border-surface-border bg-surface hover:bg-zinc-800 hover:text-white transition"
->
-  Sign Out
-</button>
+              onClick={handleSignOut}
+              className="h-9 px-3 text-xs font-medium text-zinc-300 rounded-lg border border-surface-border bg-surface hover:bg-zinc-800 transition-colors"
+            >
+              Sign Out
+            </button>
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/20 text-sm font-semibold text-accent">
               M
             </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto scrollbar-thin p-6">
-        <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-  {loadingMetrics ? (
-    Array.from({ length: 4 }).map((_, idx) => (
-      <div
-        key={idx}
-        className="h-28 animate-pulse rounded-2xl border border-surface-border bg-surface/50 p-5"
-      >
-        <div className="h-4 w-1/2 rounded bg-zinc-800"></div>
-        <div className="mt-4 h-8 w-3/4 rounded bg-zinc-800"></div>
-      </div>
-    ))
-  ) : (
-    metrics.map((metric) => (
-      <MetricCard
-        key={metric.id}
-        title={metric.title}
-        value={metric.value}
-        change={metric.change_percent}
-trend={metric.is_positive ? 'up' : 'down'}
-      />
-    ))
-  )}
-</section>
+        <main className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {loadingMetrics ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="h-28 animate-pulse rounded-2xl border border-surface-border bg-surface/50 p-4"></div>
+              ))
+            ) : (
+              metrics.map((metric) => (
+                <MetricCard
+                  key={metric.id}
+                  title={metric.title}
+                  value={metric.value}
+                  changePercent={metric.change_percent}
+                  isPositive={metric.is_positive}
+                />
+              ))
+            )}
+          </div>
 
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-            <section className="xl:col-span-2">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-base font-semibold text-white">
-                  Active AI Claws
-                </h2>
-                <span className="flex items-center gap-1.5 text-xs text-zinc-500">
-                  <CircleDot className="h-3 w-3 text-accent" />
+          <div className="grid gap-6 lg:grid-cols-12">
+            <div className="lg:col-span-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-white">Active AI Claws</h2>
+                <span className="flex items-center gap-1.5 text-xs text-zinc-400">
+                  <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
                   3 agents online
                 </span>
               </div>
               <div className="space-y-3">
-                {aiClaws.map((claw) => (
-                  <AIClawCard key={claw.name} {...claw} />
-                ))}
+                {loadingClaws ? (
+                  <div className="h-48 animate-pulse rounded-2xl border border-surface-border bg-surface/50 p-4"></div>
+                ) : (
+                  aiClaws.map((claw) => (
+                    <AIClawCard
+                      key={claw.id}
+                      name={claw.name}
+                      description={claw.description}
+                      status={claw.status}
+                      tasksToday={claw.tasks_today}
+                      iconName={claw.icon_name}
+                    />
+                  ))
+                )}
               </div>
-            </section>
+            </div>
 
-            <section className="xl:col-span-3">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-base font-semibold text-white">
-                  Insights Feed
-                </h2>
-                <button className="text-xs font-medium text-accent transition hover:text-accent-hover">
-                  View all
-                </button>
+            <div className="lg:col-span-7 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-white">Insights Feed</h2>
+                <button className="text-xs text-accent hover:underline">View all</button>
               </div>
-              <div className="rounded-xl border border-surface-border bg-surface">
-                {insights.map((insight, index) => (
-                  <InsightItem
-                    key={insight.id}
-                    {...insight}
-                    isLast={index === insights.length - 1}
-                    onAction={
-                      insight.type === 'collection'
-                        ? handleReviewEmail
-                        : undefined
-                    }
-                  />
-                ))}
+              <div className="space-y-3">
+                {loadingInsights ? (
+                  <div className="h-64 animate-pulse rounded-2xl border border-surface-border bg-surface/50 p-4"></div>
+                ) : (
+                  insights.map((item) => (
+                    <InsightItem key={item.id} {...item} onAction={handleInsightAction} />
+                  ))
+                )}
               </div>
-            </section>
+            </div>
           </div>
         </main>
       </div>
 
       <EmailSlideOver
-        open={emailOpen}
+        isOpen={emailOpen}
         onClose={() => setEmailOpen(false)}
-        email={collectionEmail}
-        onApprove={handleApproveSend}
-        sent={emailSent}
+        emailData={collectionEmail}
+        onApproveSend={handleApproveSend}
+        isSent={emailSent}
       />
     </div>
-  )
+  );
 }
