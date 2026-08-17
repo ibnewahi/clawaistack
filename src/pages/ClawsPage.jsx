@@ -1,48 +1,122 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
-import { Bot, Play, Pause, RefreshCw, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
+import { Bot, Play, Pause, Loader2 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+
+const DEFAULT_CLAWS = [
+  {
+    id: 'cfo-claw',
+    name: 'CFO Claw',
+    role: 'Financial Forecasting & Runway Insights',
+    status: 'Active',
+    tasks_today: 14,
+    last_run: '12 mins ago',
+  },
+  {
+    id: 'ar-collector-claw',
+    name: 'AR Collector Claw',
+    role: 'Automated Invoice Follow-ups & Collections',
+    status: 'Action Needed',
+    tasks_today: 8,
+    last_run: '1 hr ago',
+  },
+  {
+    id: 'bookkeeper-claw',
+    name: 'Bookkeeper Claw',
+    role: 'Transaction Categorization & Reconciliation',
+    status: 'Idle',
+    tasks_today: 0,
+    last_run: '5 hrs ago',
+  },
+];
 
 export default function ClawsPage() {
-  const [claws, setClaws] = useState([
-    {
-      id: 'cfo-claw',
-      name: 'CFO Claw',
-      role: 'Financial Forecasting & Runway Insights',
-      status: 'Active',
-      tasksToday: 14,
-      accuracy: '99.4%',
-      lastRun: '12 mins ago',
-    },
-    {
-      id: 'ar-collector',
-      name: 'AR Collector Claw',
-      role: 'Automated Invoice Follow-ups & Collections',
-      status: 'Action Needed',
-      tasksToday: 8,
-      accuracy: '98.1%',
-      lastRun: '1 hr ago',
-    },
-    {
-      id: 'bookkeeper',
-      name: 'Bookkeeper Claw',
-      role: 'Transaction Categorization & Reconciliation',
-      status: 'Idle',
-      tasksToday: 0,
-      accuracy: '99.7%',
-      lastRun: '5 hrs ago',
-    },
-  ]);
+  const [claws, setClaws] = useState(DEFAULT_CLAWS);
+  const [loading, setLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState(null);
 
-  const toggleStatus = (id) => {
-    setClaws((prev) =>
-      prev.map((claw) => {
-        if (claw.id === id) {
-          const nextStatus = claw.status === 'Active' ? 'Paused' : 'Active';
-          return { ...claw, status: nextStatus };
+  useEffect(() => {
+    async function fetchClaws() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data, error } = await supabase
+            .from('claws_config')
+            .select('*')
+            .eq('user_id', user.id);
+
+          if (data && data.length > 0) {
+            setClaws(
+              DEFAULT_CLAWS.map((def) => {
+                const found = data.find((item) => item.id === def.id);
+                return found
+                  ? {
+                      ...def,
+                      status: found.status,
+                      tasks_today: found.tasks_today ?? def.tasks_today,
+                      last_run: found.last_run ?? def.last_run,
+                    }
+                  : def;
+              })
+            );
+          }
         }
-        return claw;
-      })
+      } catch (err) {
+        console.error('Error loading claw configurations:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchClaws();
+  }, []);
+
+  const toggleClawStatus = async (id, currentStatus) => {
+    setUpdatingId(id);
+    const newStatus = currentStatus === 'Active' ? 'Idle' : 'Active';
+
+    // Optimistic UI update
+    setClaws((prev) =>
+      prev.map((claw) => (claw.id === id ? { ...claw, status: newStatus } : claw))
     );
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const clawObj = claws.find((c) => c.id === id);
+        const payload = {
+          id: id,
+          user_id: user.id,
+          name: clawObj.name,
+          role: clawObj.role,
+          status: newStatus,
+          tasks_today: clawObj.tasks_today,
+          last_run: 'Just now',
+          updated_at: new Date().toISOString(),
+        };
+
+        const { data: existing } = await supabase
+          .from('claws_config')
+          .select('id')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (existing) {
+          await supabase
+            .from('claws_config')
+            .update({ status: newStatus, last_run: 'Just now', updated_at: new Date().toISOString() })
+            .eq('id', id)
+            .eq('user_id', user.id);
+        } else {
+          await supabase.from('claws_config').insert([payload]);
+        }
+      }
+    } catch (err) {
+      console.error('Error updating claw state:', err);
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   return (
@@ -57,22 +131,27 @@ export default function ClawsPage() {
           </div>
         </header>
 
-        <main className="p-8 space-y-6">
-          <div className="grid grid-cols-1 gap-4">
-            {claws.map((claw) => (
+        <main className="p-8 space-y-4">
+          {loading ? (
+            <div className="flex items-center gap-2 text-xs text-zinc-400">
+              <Loader2 className="h-4 w-4 animate-spin text-accent" />
+              Loading AI agent statuses...
+            </div>
+          ) : (
+            claws.map((claw) => (
               <div
                 key={claw.id}
                 className="flex items-center justify-between rounded-xl border border-surface-border bg-surface p-6"
               >
                 <div className="flex items-start gap-4">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
-                    <Bot className="h-6 w-6" />
+                    <Bot className="h-5 w-5" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-3">
-                      <h3 className="text-base font-semibold text-white">{claw.name}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-semibold text-white">{claw.name}</h3>
                       <span
-                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                           claw.status === 'Active'
                             ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                             : claw.status === 'Action Needed'
@@ -83,40 +162,40 @@ export default function ClawsPage() {
                         {claw.status}
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-zinc-400">{claw.role}</p>
+                    <p className="text-xs text-zinc-400 mt-1">{claw.role}</p>
 
-                    <div className="mt-4 flex items-center gap-6 text-xs text-zinc-400">
-                      <div className="flex items-center gap-1.5">
-                        <CheckCircle2 className="h-4 w-4 text-accent" />
-                        <span>Tasks today: <strong className="text-white">{claw.tasksToday}</strong></span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="h-4 w-4 text-zinc-500" />
-                        <span>Last run: <strong className="text-white">{claw.lastRun}</strong></span>
-                      </div>
+                    <div className="flex items-center gap-4 mt-3 text-[11px] text-zinc-500">
+                      <span>Tasks today: <strong className="text-zinc-300">{claw.tasks_today}</strong></span>
+                      <span>•</span>
+                      <span>Last run: <strong className="text-zinc-300">{claw.last_run}</strong></span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => toggleStatus(claw.id)}
-                    className="flex items-center gap-2 rounded-lg border border-surface-border bg-background px-4 py-2 text-xs font-medium text-zinc-300 hover:text-white hover:border-zinc-500"
-                  >
-                    {claw.status === 'Active' ? (
-                      <>
-                        <Pause className="h-3.5 w-3.5 text-amber-400" /> Pause Agent
-                      </>
-                    ) : (
-                      <>
-                        <Play className="h-3.5 w-3.5 text-emerald-400" /> Activate Agent
-                      </>
-                    )}
-                  </button>
-                </div>
+                <button
+                  onClick={() => toggleClawStatus(claw.id, claw.status)}
+                  disabled={updatingId === claw.id}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    claw.status === 'Active'
+                      ? 'border-surface-border bg-background text-zinc-300 hover:text-white hover:border-zinc-500'
+                      : 'border-accent bg-accent text-background hover:bg-accent/90'
+                  }`}
+                >
+                  {updatingId === claw.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : claw.status === 'Active' ? (
+                    <>
+                      <Pause className="h-3.5 w-3.5" /> Pause Agent
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-3.5 w-3.5" /> Activate Agent
+                    </>
+                  )}
+                </button>
               </div>
-            ))}
-          </div>
+            ))
+          )}
         </main>
       </div>
     </div>
