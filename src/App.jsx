@@ -5,6 +5,10 @@ import ProtectedRoute from './components/ProtectedRoute';
 
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
+import ClawsPage from './pages/ClawsPage';
+import IntegrationsPage from './pages/IntegrationsPage';
+import ReportsPage from './pages/ReportsPage';
+import SettingsPage from './pages/SettingsPage';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
 import About from './pages/About';
@@ -18,17 +22,38 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
+    let mounted = true;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setLoading(false);
-    });
+    async function initAuth() {
+      try {
+        if (supabase?.auth) {
+          const { data } = await supabase.auth.getSession();
+          if (mounted) setSession(data?.session || null);
+        }
+      } catch (err) {
+        console.error('Auth initialization error:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
 
-    return () => subscription.unsubscribe();
+    initAuth();
+
+    let subscription = null;
+    if (supabase?.auth) {
+      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (mounted) {
+          setSession(session);
+          setLoading(false);
+        }
+      });
+      subscription = data?.subscription;
+    }
+
+    return () => {
+      mounted = false;
+      if (subscription) subscription.unsubscribe();
+    };
   }, []);
 
   return (
@@ -46,6 +71,38 @@ export default function App() {
         element={
           <ProtectedRoute session={session} loading={loading}>
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/claws"
+        element={
+          <ProtectedRoute session={session} loading={loading}>
+            <ClawsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/integrations"
+        element={
+          <ProtectedRoute session={session} loading={loading}>
+            <IntegrationsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reports"
+        element={
+          <ProtectedRoute session={session} loading={loading}>
+            <ReportsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute session={session} loading={loading}>
+            <SettingsPage />
           </ProtectedRoute>
         }
       />
