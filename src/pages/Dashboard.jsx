@@ -138,6 +138,10 @@ export default function Dashboard() {
   const fetchMetrics = async () => {
     try {
       setLoadingMetrics(true);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       const { data, error } = await supabase
         .from('dashboard_metrics')
         .select('*')
@@ -145,8 +149,29 @@ export default function Dashboard() {
 
       if (error) {
         console.error('Error fetching metrics:', error.message);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        const defaultMetrics = [
+          { user_id: user.id, title: 'Monthly Recurring Revenue', value: '$24,850', change_percent: '+14.2%', is_positive: true, order_index: 1 },
+          { user_id: user.id, title: 'Active AI Agents', value: '18', change_percent: '+3', is_positive: true, order_index: 2 },
+          { user_id: user.id, title: 'Total Leads Audited', value: '1,420', change_percent: '+28.5%', is_positive: true, order_index: 3 },
+          { user_id: user.id, title: 'Average Margin', value: '68.4%', change_percent: '-1.2%', is_positive: false, order_index: 4 }
+        ];
+
+        const { data: insertedData, error: insertError } = await supabase
+          .from('dashboard_metrics')
+          .insert(defaultMetrics)
+          .select();
+
+        if (insertError) {
+          console.error('Error auto-seeding metrics:', insertError.message);
+        } else {
+          setMetrics(insertedData || []);
+        }
       } else {
-        setMetrics(data || []);
+        setMetrics(data);
       }
     } catch (err) {
       console.error('Unexpected error loading metrics:', err);
