@@ -6,12 +6,13 @@ import MetricCard from '../components/MetricCard';
 import AIClawCard from '../components/AIClawCard';
 import InsightItem from '../components/InsightItem';
 import EmailSlideOver from '../components/EmailSlideOver';
-import { Bot, Search, Bell } from 'lucide-react';
+import { Bot, Search, Bell, X, CheckCircle2 } from 'lucide-react';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [isEmailOpen, setIsEmailOpen] = useState(false);
   const [isSent, setIsSent] = useState(false);
+  const [activeModal, setActiveModal] = useState(null);
 
   const sampleEmail = {
     recipient: 'billing@acmecorp.com',
@@ -23,7 +24,7 @@ export default function Dashboard() {
     if (actionType === 'review_email' || actionType === 'collection') {
       setIsEmailOpen(true);
     } else {
-      alert(`Triggered action: ${actionType.toUpperCase()}\nPipeline simulation active.`);
+      setActiveModal(actionType);
     }
   };
 
@@ -121,7 +122,7 @@ export default function Dashboard() {
                   onAction={handleInsightAction}
                 />
                 <InsightItem
-                  type="bank"
+                  type="reconciliation"
                   title="Bank reconciliation complete"
                   description="Bookkeeper Claw matched 847 transactions across 3 accounts with 99.7% accuracy."
                   action_text="View Report"
@@ -135,6 +136,7 @@ export default function Dashboard() {
         </main>
       </div>
 
+      {/* Collection Email Drawer */}
       <EmailSlideOver
         isOpen={isEmailOpen}
         onClose={() => setIsEmailOpen(false)}
@@ -148,6 +150,43 @@ export default function Dashboard() {
           }, 1500);
         }}
       />
+
+      {/* Generic Interactive Insight Modal */}
+      {activeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg rounded-xl border border-surface-border bg-surface p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-surface-border pb-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-accent" />
+                <h3 className="text-base font-semibold text-white capitalize">
+                  {activeModal.replace('_', ' ')} Pipeline
+                </h3>
+              </div>
+              <button onClick={() => setActiveModal(null)} className="text-zinc-400 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-4 space-y-3 text-xs text-zinc-300">
+              <p className="leading-relaxed">
+                Triggered pipeline action for <strong className="text-accent">{activeModal.toUpperCase()}</strong>.
+              </p>
+              <div className="rounded-lg border border-surface-border bg-background p-3 font-mono text-[11px] text-zinc-400">
+                Status: Executed successfully<br />
+                Agent: ClawAI Automated Worker<br />
+                Timestamp: {new Date().toLocaleTimeString()}
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setActiveModal(null)}
+                className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-background hover:bg-accent/90"
+              >
+                Close View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
