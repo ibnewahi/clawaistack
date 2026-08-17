@@ -5,6 +5,30 @@ import { supabase } from '../lib/supabase';
 
 const DEFAULT_CLAWS = [
   {
+    id: 'bookkeeper-claw',
+    name: 'Bookkeeper Claw',
+    role: 'Transaction Categorization & Reconciliation',
+    status: 'Active',
+    tasks_today: 0,
+    last_run: '5 hrs ago',
+  },
+  {
+    id: 'ar-collector-claw',
+    name: 'AR Collector Claw',
+    role: 'Automated Invoice Follow-ups & Collections',
+    status: 'Active',
+    tasks_today: 8,
+    last_run: '1 hr ago',
+  },
+  {
+    id: 'ap-claw',
+    name: 'AP Claw',
+    role: 'Vendor Bill Processing & 3-Way Matching',
+    status: 'Active',
+    tasks_today: 5,
+    last_run: '30 mins ago',
+  },
+  {
     id: 'cfo-claw',
     name: 'CFO Claw',
     role: 'Financial Forecasting & Runway Insights',
@@ -13,20 +37,12 @@ const DEFAULT_CLAWS = [
     last_run: '12 mins ago',
   },
   {
-    id: 'ar-collector-claw',
-    name: 'AR Collector Claw',
-    role: 'Automated Invoice Follow-ups & Collections',
-    status: 'Action Needed',
-    tasks_today: 8,
-    last_run: '1 hr ago',
-  },
-  {
-    id: 'bookkeeper-claw',
-    name: 'Bookkeeper Claw',
-    role: 'Transaction Categorization & Reconciliation',
-    status: 'Idle',
-    tasks_today: 0,
-    last_run: '5 hrs ago',
+    id: 'controller-claw',
+    name: 'Controller Claw',
+    role: 'Anomaly Detection, Compliance & Audit',
+    status: 'Active',
+    tasks_today: 3,
+    last_run: 'Just now',
   },
 ];
 
@@ -45,19 +61,21 @@ export default function ClawsPage() {
             .select('*')
             .eq('user_id', user.id);
 
+          if (error) {
+            console.error('Supabase fetch error:', error);
+          }
+
           if (data && data.length > 0) {
+            // Map database records directly, matching by name or falling back cleanly
             setClaws(
-              DEFAULT_CLAWS.map((def) => {
-                const found = data.find((item) => item.id === def.id);
-                return found
-                  ? {
-                      ...def,
-                      status: found.status,
-                      tasks_today: found.tasks_today ?? def.tasks_today,
-                      last_run: found.last_run ?? def.last_run,
-                    }
-                  : def;
-              })
+              data.map((item) => ({
+                id: item.id,
+                name: item.name,
+                role: item.role,
+                status: item.status || 'Active',
+                tasks_today: item.tasks_today ?? 0,
+                last_run: item.last_run || 'Just now',
+              }))
             );
           }
         }
@@ -83,34 +101,15 @@ export default function ClawsPage() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const clawObj = claws.find((c) => c.id === id);
-        const payload = {
-          id: id,
-          user_id: user.id,
-          name: clawObj.name,
-          role: clawObj.role,
-          status: newStatus,
-          tasks_today: clawObj.tasks_today,
-          last_run: 'Just now',
-          updated_at: new Date().toISOString(),
-        };
-
-        const { data: existing } = await supabase
+        await supabase
           .from('claws_config')
-          .select('id')
+          .update({ 
+            status: newStatus, 
+            last_run: 'Just now', 
+            updated_at: new Date().toISOString() 
+          })
           .eq('id', id)
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        if (existing) {
-          await supabase
-            .from('claws_config')
-            .update({ status: newStatus, last_run: 'Just now', updated_at: new Date().toISOString() })
-            .eq('id', id)
-            .eq('user_id', user.id);
-        } else {
-          await supabase.from('claws_config').insert([payload]);
-        }
+          .eq('user_id', user.id);
       }
     } catch (err) {
       console.error('Error updating claw state:', err);
