@@ -1,3 +1,6 @@
+import React from 'react';
+import { Bot } from 'lucide-react';
+
 const statusConfig = {
   active: {
     label: 'Active',
@@ -14,21 +17,25 @@ const statusConfig = {
     dot: 'bg-zinc-500',
     badge: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
   },
-}
+};
 
 export default function AIClawCard({
   name,
   description,
-  status,
-  tasksToday,
-  icon: Icon,
+  status = 'idle',
+  tasksToday = 0,
+  icon: Icon = Bot,
 }) {
-  const config = statusConfig[status]
+  // Fallback icon if prop is explicitly passed as null/undefined
+  const RenderIcon = Icon || Bot;
+
+  // Fallback status config if status key is missing
+  const config = statusConfig[status] || statusConfig.idle;
 
   return (
     <div className="group flex items-start gap-4 rounded-xl border border-surface-border bg-surface p-4 transition hover:border-accent/25 hover:bg-surface-elevated/50">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent transition group-hover:bg-accent/20">
-        <Icon className="h-5 w-5" />
+        <RenderIcon className="h-5 w-5" />
       </div>
 
       <div className="min-w-0 flex-1">
@@ -41,18 +48,19 @@ export default function AIClawCard({
             {config.label}
           </span>
         </div>
+
         <p className="mt-1 text-xs leading-relaxed text-zinc-500">{description}</p>
         <p className="mt-2 text-[11px] text-zinc-600">
           {tasksToday > 0 ? (
             <>
-              <span className="font-medium text-zinc-400">{tasksToday}</span>{' '}
-              tasks completed today
+              <span className="font-medium text-zinc-400">{tasksToday}</span>
+              {' task' + (tasksToday > 1 ? 's' : '') + ' processed today'}
             </>
           ) : (
-            'No tasks queued'
+            'No tasks run today'
           )}
         </p>
       </div>
     </div>
-  )
+  );
 }
