@@ -40,13 +40,26 @@ export default function Dashboard() {
   const [activeNav, setActiveNav] = useState('dashboard');
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
-  const [metrics, setMetrics] = useState([]);
-  const [loadingMetrics, setLoadingMetrics] = useState(true);
 
-  const [aiClaws, setAiClaws] = useState([]);
-  const [insights, setInsights] = useState([]);
-  const [loadingClaws, setLoadingClaws] = useState(true);
-  const [loadingInsights, setLoadingInsights] = useState(true);
+  const [metrics, setMetrics] = useState([
+    { id: '1', title: 'Monthly Recurring Revenue', value: '$24,850', change_percent: '+14.2%', is_positive: true },
+    { id: '2', title: 'Active AI Agents', value: '18', change_percent: '+3', is_positive: true },
+    { id: '3', title: 'Total Leads Audited', value: '1,420', change_percent: '+28.5%', is_positive: true },
+    { id: '4', title: 'Average Margin', value: '68.4%', change_percent: '-1.2%', is_positive: false }
+  ]);
+
+  const [aiClaws, setAiClaws] = useState([
+    { id: '1', name: 'CFO Claw', description: 'Financial forecasting & strategic insights', status: 'active', tasks_today: 14, icon_name: 'Sparkles' },
+    { id: '2', name: 'AR Collector Claw', description: 'Automated invoice follow-ups & collections', status: 'action-needed', tasks_today: 8, icon_name: 'Mail' },
+    { id: '3', name: 'Bookkeeper Claw', description: 'Transaction categorization & reconciliation', status: 'idle', tasks_today: 0, icon_name: 'FileBarChart' }
+  ]);
+
+  const [insights, setInsights] = useState([
+    { id: '1', type: 'collection', title: 'Overdue invoice detected — Acme Corp', description: 'Invoice #INV-2847 ($12,400) is 18 days past due. AI drafted a collection email ready for your review.', action_text: 'Review Email', action_type: 'email', time_ago: '12 min ago' },
+    { id: '2', type: 'forecast', title: 'Cash runway extended by 2 weeks', description: 'CFO Claw updated your 90-day forecast based on recent receivables acceleration.', action_text: 'View Forecast', action_type: 'forecast', time_ago: '1 hr ago' },
+    { id: '3', type: 'alert', title: 'Gross margin dip flagged in Q3', description: 'COGS increased 3.2% in the Services line. Bookkeeper Claw identified 4 uncategorized vendor charges.', action_text: 'Investigate', action_type: 'audit', time_ago: '3 hrs ago' },
+    { id: '4', type: 'reconciliation', title: 'Bank reconciliation complete', description: 'Bookkeeper Claw matched 847 transactions across 3 accounts with 99.7% accuracy.', action_text: 'View Report', action_type: 'report', time_ago: '5 hrs ago' }
+  ]);
 
   useEffect(() => {
     fetchMetrics();
@@ -56,138 +69,55 @@ export default function Dashboard() {
 
   const fetchMetrics = async () => {
     try {
-      setLoadingMetrics(true);
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
       const { data, error } = await supabase
         .from('dashboard_metrics')
         .select('*')
         .order('order_index', { ascending: true });
 
-      if (error) {
-        console.error('Error fetching metrics:', error.message);
-        return;
-      }
-
-      if (!data || data.length === 0) {
-        const defaultMetrics = [
-          { user_id: user.id, title: 'Monthly Recurring Revenue', value: '$24,850', change_percent: '+14.2%', is_positive: true, order_index: 1 },
-          { user_id: user.id, title: 'Active AI Agents', value: '18', change_percent: '+3', is_positive: true, order_index: 2 },
-          { user_id: user.id, title: 'Total Leads Audited', value: '1,420', change_percent: '+28.5%', is_positive: true, order_index: 3 },
-          { user_id: user.id, title: 'Average Margin', value: '68.4%', change_percent: '-1.2%', is_positive: false, order_index: 4 }
-        ];
-
-        const { data: insertedData, error: insertError } = await supabase
-          .from('dashboard_metrics')
-          .insert(defaultMetrics)
-          .select();
-
-        if (insertError) {
-          console.error('Error auto-seeding metrics:', insertError.message);
-        } else {
-          setMetrics(insertedData || []);
-        }
-      } else {
+      if (!error && data && data.length > 0) {
         setMetrics(data);
       }
     } catch (err) {
-      console.error('Unexpected error loading metrics:', err);
-    } finally {
-      setLoadingMetrics(false);
+      console.error('Error loading metrics:', err);
     }
   };
 
   const fetchAiClaws = async () => {
     try {
-      setLoadingClaws(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
       const { data, error } = await supabase
         .from('ai_claws')
         .select('*')
         .order('created_at', { ascending: true });
 
-      if (error) {
-        console.error('Error fetching AI claws:', error.message);
-        return;
-      }
-
-      if (!data || data.length === 0) {
-        const defaultClaws = [
-          { user_id: user.id, name: 'CFO Claw', description: 'Financial forecasting & strategic insights', status: 'active', tasks_today: 14, icon_name: 'Sparkles' },
-          { user_id: user.id, name: 'AR Collector Claw', description: 'Automated invoice follow-ups & collections', status: 'action-needed', tasks_today: 8, icon_name: 'Mail' },
-          { user_id: user.id, name: 'Bookkeeper Claw', description: 'Transaction categorization & reconciliation', status: 'idle', tasks_today: 0, icon_name: 'FileBarChart' }
-        ];
-
-        const { data: insertedData, error: insertError } = await supabase
-          .from('ai_claws')
-          .insert(defaultClaws)
-          .select();
-
-        if (insertError) {
-          console.error('Error auto-seeding AI claws:', insertError.message);
-        } else {
-          setAiClaws(insertedData || []);
-        }
-      } else {
+      if (!error && data && data.length > 0) {
         setAiClaws(data);
       }
     } catch (err) {
-      console.error('Unexpected error loading AI claws:', err);
-    } finally {
-      setLoadingClaws(false);
+      console.error('Error loading AI claws:', err);
     }
   };
 
   const fetchInsights = async () => {
     try {
-      setLoadingInsights(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
       const { data, error } = await supabase
         .from('insights_feed')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching insights:', error.message);
-        return;
-      }
-
-      if (!data || data.length === 0) {
-        const defaultInsights = [
-          { user_id: user.id, type: 'collection', title: 'Overdue invoice detected — Acme Corp', description: 'Invoice #INV-2847 ($12,400) is 18 days past due. AI drafted a collection email ready for your review.', action_text: 'Review Email', action_type: 'email', time_ago: '12 min ago' },
-          { user_id: user.id, type: 'forecast', title: 'Cash runway extended by 2 weeks', description: 'CFO Claw updated your 90-day forecast based on recent receivables acceleration.', action_text: 'View Forecast', action_type: 'forecast', time_ago: '1 hr ago' },
-          { user_id: user.id, type: 'alert', title: 'Gross margin dip flagged in Q3', description: 'COGS increased 3.2% in the Services line. Bookkeeper Claw identified 4 uncategorized vendor charges.', action_text: 'Investigate', action_type: 'audit', time_ago: '3 hrs ago' },
-          { user_id: user.id, type: 'reconciliation', title: 'Bank reconciliation complete', description: 'Bookkeeper Claw matched 847 transactions across 3 accounts with 99.7% accuracy.', action_text: 'View Report', action_type: 'report', time_ago: '5 hrs ago' }
-        ];
-
-        const { data: insertedData, error: insertError } = await supabase
-          .from('insights_feed')
-          .insert(defaultInsights)
-          .select();
-
-        if (insertError) {
-          console.error('Error auto-seeding insights:', insertError.message);
-        } else {
-          setInsights(insertedData || []);
-        }
-      } else {
+      if (!error && data && data.length > 0) {
         setInsights(data);
       }
     } catch (err) {
-      console.error('Unexpected error loading insights:', err);
-    } finally {
-      setLoadingInsights(false);
+      console.error('Error loading insights:', err);
     }
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('Sign out error:', err);
+    }
     navigate('/auth');
   };
 
@@ -245,21 +175,15 @@ export default function Dashboard() {
 
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {loadingMetrics ? (
-              Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="h-28 animate-pulse rounded-2xl border border-surface-border bg-surface/50 p-4"></div>
-              ))
-            ) : (
-              metrics.map((metric) => (
-                <MetricCard
-                  key={metric.id}
-                  title={metric.title}
-                  value={metric.value}
-                  changePercent={metric.change_percent}
-                  isPositive={metric.is_positive}
-                />
-              ))
-            )}
+            {metrics.map((metric) => (
+              <MetricCard
+                key={metric.id || metric.title}
+                title={metric.title}
+                value={metric.value}
+                changePercent={metric.change_percent}
+                isPositive={metric.is_positive}
+              />
+            ))}
           </div>
 
           <div className="grid gap-6 lg:grid-cols-12">
@@ -272,20 +196,16 @@ export default function Dashboard() {
                 </span>
               </div>
               <div className="space-y-3">
-                {loadingClaws ? (
-                  <div className="h-48 animate-pulse rounded-2xl border border-surface-border bg-surface/50 p-4"></div>
-                ) : (
-                  aiClaws.map((claw) => (
-                    <AIClawCard
-                      key={claw.id}
-                      name={claw.name}
-                      description={claw.description}
-                      status={claw.status}
-                      tasksToday={claw.tasks_today}
-                      iconName={claw.icon_name}
-                    />
-                  ))
-                )}
+                {aiClaws.map((claw) => (
+                  <AIClawCard
+                    key={claw.id || claw.name}
+                    name={claw.name}
+                    description={claw.description}
+                    status={claw.status}
+                    tasksToday={claw.tasks_today}
+                    iconName={claw.icon_name}
+                  />
+                ))}
               </div>
             </div>
 
@@ -295,13 +215,9 @@ export default function Dashboard() {
                 <button className="text-xs text-accent hover:underline">View all</button>
               </div>
               <div className="space-y-3">
-                {loadingInsights ? (
-                  <div className="h-64 animate-pulse rounded-2xl border border-surface-border bg-surface/50 p-4"></div>
-                ) : (
-                  insights.map((item) => (
-                    <InsightItem key={item.id} {...item} onAction={handleInsightAction} />
-                  ))
-                )}
+                {insights.map((item) => (
+                  <InsightItem key={item.id || item.title} {...item} onAction={handleInsightAction} />
+                ))}
               </div>
             </div>
           </div>
