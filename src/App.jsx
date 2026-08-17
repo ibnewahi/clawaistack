@@ -15,14 +15,17 @@ import Auth from './pages/Auth';
 
 export default function App() {
   const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -41,7 +44,7 @@ export default function App() {
       <Route
         path="/dashboard"
         element={
-          <ProtectedRoute session={session}>
+          <ProtectedRoute session={session} loading={loading}>
             <Dashboard />
           </ProtectedRoute>
         }

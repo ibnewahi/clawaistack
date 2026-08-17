@@ -1,118 +1,86 @@
-import { X, Check, Pencil, Mail, Sparkles } from 'lucide-react'
-import { useEffect } from 'react'
+import React from 'react';
+import { X, Send, Check } from 'lucide-react';
 
-export default function EmailSlideOver({ open, onClose, email, onApprove, sent }) {
-  useEffect(() => {
-    const handleKey = (e) => {
-      if (e.key === 'Escape') onClose()
-    }
-    if (open) {
-      document.addEventListener('keydown', handleKey)
-      document.body.style.overflow = 'hidden'
-    }
-    return () => {
-      document.removeEventListener('keydown', handleKey)
-      document.body.style.overflow = ''
-    }
-  }, [open, onClose])
+export default function EmailSlideOver({
+  isOpen,
+  onClose,
+  emailData,
+  onApproveSend,
+  isSent,
+}) {
+  if (!isOpen) return null;
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${
-          open ? 'opacity-100' : 'pointer-events-none opacity-0'
-        }`}
-        onClick={onClose}
-      />
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-surface border-l border-surface-border p-6 flex flex-col justify-between shadow-2xl">
+        <div>
+          <div className="flex items-center justify-between border-b border-surface-border pb-4">
+            <h3 className="text-base font-semibold text-white">Review AR Collection Email</h3>
+            <button
+              onClick={onClose}
+              className="text-zinc-400 hover:text-white transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
 
-      {/* Slide-over panel */}
-      <div
-        className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l border-surface-border bg-surface shadow-2xl transition-transform duration-300 ease-out ${
-          open ? 'translate-x-0' : 'translate-x-full'
-        }`}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-surface-border px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/15">
-              <Mail className="h-4 w-4 text-accent" />
+          <div className="mt-6 space-y-4 text-xs">
+            <div>
+              <label className="block text-zinc-500 mb-1">Recipient</label>
+              <input
+                type="text"
+                readOnly
+                value={emailData?.recipient || ''}
+                className="w-full rounded-lg border border-surface-border bg-background px-3 py-2 text-zinc-300"
+              />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">
-                Collection Email Preview
-              </h2>
-              <p className="flex items-center gap-1 text-[11px] text-zinc-500">
-                <Sparkles className="h-3 w-3 text-accent" />
-                Drafted by AR Collector Claw
-              </p>
+              <label className="block text-zinc-500 mb-1">Subject</label>
+              <input
+                type="text"
+                readOnly
+                value={emailData?.subject || ''}
+                className="w-full rounded-lg border border-surface-border bg-background px-3 py-2 text-zinc-300"
+              />
+            </div>
+            <div>
+              <label className="block text-zinc-500 mb-1">Message Body</label>
+              <textarea
+                rows={12}
+                readOnly
+                value={emailData?.body || ''}
+                className="w-full rounded-lg border border-surface-border bg-background p-3 text-zinc-300 resize-none font-mono text-[11px]"
+              />
             </div>
           </div>
+        </div>
+
+        <div className="border-t border-surface-border pt-4 flex gap-3">
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-surface-elevated hover:text-zinc-300"
+            className="flex-1 rounded-lg border border-surface-border py-2 text-xs font-medium text-zinc-400 hover:bg-zinc-800"
           >
-            <X className="h-4 w-4" />
+            Cancel
+          </button>
+          <button
+            onClick={onApproveSend}
+            disabled={isSent}
+            className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-accent py-2 text-xs font-semibold text-background hover:bg-accent/90 disabled:opacity-50"
+          >
+            {isSent ? (
+              <>
+                <Check className="h-4 w-4" />
+                Sent Successfully
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4" />
+                Approve & Send
+              </>
+            )}
           </button>
         </div>
-
-        {/* Email meta */}
-        <div className="space-y-3 border-b border-surface-border px-6 py-4">
-          <div className="flex gap-2 text-xs">
-            <span className="w-12 shrink-0 font-medium text-zinc-500">To</span>
-            <span className="text-zinc-300">{email.to}</span>
-          </div>
-          <div className="flex gap-2 text-xs">
-            <span className="w-12 shrink-0 font-medium text-zinc-500">
-              Subject
-            </span>
-            <span className="font-medium text-white">{email.subject}</span>
-          </div>
-        </div>
-
-        {/* Email body */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-5">
-          <div className="rounded-xl border border-surface-border bg-background p-5">
-            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-zinc-300">
-              {email.body}
-            </pre>
-          </div>
-
-          {/* AI confidence badge */}
-          <div className="mt-4 flex items-center gap-2 rounded-lg bg-accent/10 px-3 py-2">
-            <Sparkles className="h-3.5 w-3.5 text-accent" />
-            <p className="text-xs text-zinc-400">
-              AI confidence:{' '}
-              <span className="font-semibold text-accent">94%</span> — tone
-              matched to customer history
-            </p>
-          </div>
-        </div>
-
-        {/* Footer actions */}
-        <div className="border-t border-surface-border px-6 py-4">
-          {sent ? (
-            <div className="flex items-center justify-center gap-2 rounded-lg bg-accent/15 py-3 text-sm font-semibold text-accent">
-              <Check className="h-4 w-4" />
-              Email sent successfully!
-            </div>
-          ) : (
-            <div className="flex gap-3">
-              <button
-                onClick={onApprove}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-semibold text-background transition hover:bg-accent-hover"
-              >
-                <Check className="h-4 w-4" />
-                Approve &amp; Send
-              </button>
-              <button className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-surface-border bg-surface-elevated py-2.5 text-sm font-semibold text-zinc-300 transition hover:border-accent/40 hover:text-white">
-                <Pencil className="h-4 w-4" />
-                Edit
-              </button>
-            </div>
-          )}
-        </div>
       </div>
-    </>
-  )
+    </div>
+  );
 }
