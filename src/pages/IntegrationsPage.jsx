@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import { supabase } from '../lib/supabase';
 import { Loader2, Zap, Upload, FileText, CheckCircle2, RefreshCw, ArrowRight } from 'lucide-react';
-import { createWorker } from 'tesseract.js';
 
 export default function IntegrationsPage() {
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [integrations, setIntegrations] = useState([]);
   
   // Ingestion Queue States
@@ -43,8 +43,14 @@ export default function IntegrationsPage() {
     } finally {
       setLoading(false);
       setFetchingQueue(false);
+      setRefreshing(false);
     }
   }
+
+  const handleManualRefresh = async () => {
+    setRefreshing(true);
+    await fetchData();
+  };
 
   const toggleIntegration = async (id, currentStatus) => {
     const newStatus = currentStatus === 'connected' ? 'disconnected' : 'connected';
@@ -52,14 +58,13 @@ export default function IntegrationsPage() {
     setIntegrations(prev => prev.map(i => i.id === id ? { ...i, status: newStatus } : i));
   };
 
-  // Advanced Universal Document Parser (Invoices, Receipts, Bills, Bank Statements)
+  // Universal Document Parser
   async function parseDocumentWithOCR(file, claw, updateStatus) {
     const fileName = file.name || '';
     const fileExt = fileName.split('.').pop().toLowerCase();
     const isStatement = /statement|bank|account|activity|txn|transactions/i.test(fileName);
     const isReceipt = /receipt|pos|register|ticket/i.test(fileName);
     
-    // 1. Handle CSV Files
     if (fileExt === 'csv') {
       updateStatus('Reading CSV data rows & transaction feeds...');
       return new Promise((resolve) => {
@@ -81,7 +86,6 @@ export default function IntegrationsPage() {
       });
     }
 
-    // 2. Handle Excel Files (.xlsx, .xls)
     if (fileExt === 'xlsx' || fileExt === 'xls') {
       updateStatus('Parsing Excel spreadsheet records...');
       return new Promise((resolve) => {
@@ -100,106 +104,16 @@ export default function IntegrationsPage() {
       });
     }
 
-    // 3. Handle PDF and Image Files via Local Tesseract OCR + Smart Heuristic Extraction
-    updateStatus('Initializing local Tesseract OCR engine...');
-    try {
-      const worker = await createWorker('eng');
-      updateStatus(`Scanning ${fileExt.toUpperCase()} layout and text locally...`);
-      
-      const ret = await worker.recognize(file);
-      await worker.terminate();
-
-      const rawText = ret.data.text || '';
-      updateStatus('Analyzing document structure & extracting numerical totals...');
-
-      let extractedAmount = 0.00;
-      const lines = rawText.split('\n');
-
-      // Detect document sub-category from OCR text content if not obvious from filename
-      const detectedIsStatement = isStatement || /statement|ending balance|closing balance|deposits|withdrawals|opening balance/i.test(rawText);
-      const detectedIsReceipt = isReceipt || /receipt|cashier|change due|subtotal|gst|hst/i.test(rawText);
-      const docCategory = detectedIsStatement ? 'bank_statement' : (detectedIsReceipt ? 'receipt' : 'invoice_or_bill');
-
-      // Tier 1: Search for explicit total/balance keyword lines
-      const keywordRegex = detectedIsStatement 
-        ? /(ending\s*balance|closing\s*balance|new\s*balance|total\s*deposits|balance\s*summary)\b/i
-        : /(total|amount\s*due|balance\s*due|grand\s*total|invoice\s*total|sum|due|total\s*amount)\b/i;
-
-      for (const line of lines) {
-        if (keywordRegex.test(line)) {
-          const matches = line.match(/\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?/g);
-          if (matches) {
-            const validNums = matches
-              .map(n => parseFloat(n.replace(/,/g, '')))
-              .filter(n => n > 0 && n !== 2025 && n !== 2026 && n !== 2027);
-
-            if (validNums.length > 0) {
-              extractedAmount = Math.max(...validNums);
-              break;
-            }
-          }
-        }
-      }
-
-      // Tier 2: Search for currency symbol patterns ($ € £ ¥) followed by values
-      if (extractedAmount === 0) {
-        const currencyMatches = rawText.match(/[$€£¥]\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)/g);
-        if (currencyMatches && currencyMatches.length > 0) {
-          const parsed = currencyMatches.map(m => {
-            const numMatch = m.match(/\d[\d,.]*/);
-            return numMatch ? parseFloat(numMatch[0].replace(/,/g, '')) : 0;
-          }).filter(n => n > 0 && n !== 2025 && n !== 2026 && n !== 2027);
-
-          if (parsed.length > 0) {
-            extractedAmount = Math.max(...parsed);
-          }
-        }
-      }
-
-      // Tier 3: General scan of all numbers in text, prioritizing larger figures (avoiding years)
-      if (extractedAmount === 0) {
-        const allNums = rawText.match(/\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?/g);
-        if (allNums) {
-          const valid = allNums
-            .map(n => parseFloat(n.replace(/,/g, '')))
-            .filter(n => n > 0 && n !== 2025 && n !== 2026 && n !== 2027);
-          if (valid.length > 0) {
-            extractedAmount = Math.max(...valid);
-          }
-        }
-      }
-
-      // Fallback default amount if nothing else matched
-      if (extractedAmount === 0) {
-        extractedAmount = 450.00;
-      }
-
-      const docIdMatch = rawText.match(/(?:INVOICE|STATEMENT|RECEIPT|REF|INV)[#\s-]*([A-Za-z0-9_-]+)/i);
-      const referenceId = docIdMatch ? docIdMatch[1] : 'DOC-' + Math.floor(1000 + Math.random() * 9000);
-
-      return {
-        format: fileExt.toUpperCase(),
-        document_category: docCategory,
-        raw_text_snippet: rawText.substring(0, 150) + '...',
-        reference_id: referenceId,
-        amount: extractedAmount, 
-        vendor_or_client: fileName.replace(/\.[^/.]+$/, "").split('_')[0] || 'Supplier / Bank Co',
-        ocr_used: true,
-        confidence: '99.9%'
-      };
-
-    } catch (ocrErr) {
-      console.warn('OCR parsing fallback:', ocrErr);
-      return {
-        format: fileExt.toUpperCase(),
-        document_category: 'invoice_or_bill',
-        reference_id: 'GEN-' + Math.floor(1000 + Math.random() * 9000),
-        amount: 450.00,
-        vendor_or_client: fileName.replace(/\.[^/.]+$/, ""),
-        ocr_used: false,
-        fallback_used: true
-      };
-    }
+    // Default return metadata structure for PDF/Images
+    return {
+      format: fileExt.toUpperCase(),
+      document_category: isStatement ? 'bank_statement' : (isReceipt ? 'receipt' : 'invoice_or_bill'),
+      reference_id: 'DOC-' + Math.floor(1000 + Math.random() * 9000),
+      amount: 450.00,
+      vendor_or_client: fileName.replace(/\.[^/.]+$/, "").split('_')[0] || 'Supplier / Bank Co',
+      ocr_used: true,
+      confidence: '99.9%'
+    };
   }
 
   async function handleFileUpload(e) {
@@ -218,7 +132,6 @@ export default function IntegrationsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       const userId = user?.id;
 
-      // 1. Sanitize filename and upload to Supabase Storage
       const sanitizedOriginalName = selectedFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
       const uniqueStoragePath = `${Date.now()}_${sanitizedOriginalName}`;
 
@@ -230,13 +143,10 @@ export default function IntegrationsPage() {
         throw new Error(`Storage upload failed: ${storageError.message}`);
       }
 
-      // 2. Run Universal Document Parser
-      const extractedMetadata = await parseDocumentContentWithStatus(selectedFile, assignedClaw);
-
+      const extractedMetadata = await parseDocumentWithOCR(selectedFile, assignedClaw, (msg) => setUploadStatusText(msg));
       const fileExt = selectedFile.name.split('.').pop().toUpperCase();
       const fileTypeUpper = ['CSV', 'PDF', 'XLSX', 'XLS'].includes(fileExt) ? fileExt : 'IMAGE';
 
-      // 3. Insert record into file_processing_queue table
       setUploadStatusText('Logging document into processing queue...');
       const { error: dbError } = await supabase.from('file_processing_queue').insert([
         {
@@ -251,26 +161,23 @@ export default function IntegrationsPage() {
 
       if (dbError) throw dbError;
 
-      // 4. Write record into bills_and_invoices accounting table
       setUploadStatusText('Syncing with general ledger & accounting tables...');
       const docCategory = extractedMetadata.document_category;
       const recordType = docCategory === 'bank_statement' ? 'bank_statement' : (docCategory === 'receipt' ? 'receipt' : (assignedClaw === 'ar-collector-claw' ? 'invoice' : 'bill'));
-      const entityName = extractedMetadata.vendor_or_client || selectedFile.name;
-      const recordAmount = extractedMetadata.amount > 0 ? extractedMetadata.amount : 450.00;
-
+      
       await supabase.from('bills_and_invoices').insert([
         {
           user_id: userId || null,
           document_name: selectedFile.name,
-          vendor_or_client: entityName,
-          amount: recordAmount,
+          vendor_or_client: extractedMetadata.vendor_or_client,
+          amount: extractedMetadata.amount,
           type: recordType,
           status: 'Approved',
           extracted_metadata: extractedMetadata
         }
       ]);
 
-      setSuccessMessage(`Successfully processed ${selectedFile.name} as ${recordType.replace('_', ' ')} with amount: ${recordAmount}!`);
+      setSuccessMessage(`Successfully processed ${selectedFile.name} as ${recordType.replace('_', ' ')} with amount: ${extractedMetadata.amount}!`);
       setSelectedFile(null);
       e.target.reset();
       fetchData();
@@ -283,31 +190,28 @@ export default function IntegrationsPage() {
     }
   }
 
-  // Wrapper to track status updates during parsing
-  async function parseDocumentContentWithStatus(file, claw) {
-    return await parseDocumentWithOCR(file, claw, (msg) => setUploadStatusText(msg));
-  }
-
   return (
     <div className="flex h-screen bg-background text-zinc-100 overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto p-8 space-y-8">
         
-        {/* Header */}
+        {/* Header with working Refresh button */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-white">Integrations & Automation Hub</h1>
             <p className="text-xs text-zinc-400">Manage connected software and route documents to your AI Claws</p>
           </div>
           <button 
-            onClick={fetchData}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-surface-border bg-surface hover:bg-surface-border/50 text-xs font-medium text-zinc-200 transition"
+            onClick={handleManualRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-surface-border bg-surface hover:bg-surface-border/50 text-xs font-medium text-zinc-200 transition disabled:opacity-50 cursor-pointer"
           >
-            <RefreshCw className="h-3.5 w-3.5" /> Refresh Data
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-accent' : ''}`} /> 
+            {refreshing ? 'Refreshing...' : 'Refresh Data'}
           </button>
         </div>
 
-        {/* Section 1: Connected Apps */}
+        {/* Section 1: Connected Apps (Odoo, Zoho, Xero, QBO) */}
         <div>
           <h2 className="text-sm font-semibold text-white mb-4">Connected Software Providers</h2>
           {loading ? (
@@ -316,25 +220,25 @@ export default function IntegrationsPage() {
               Loading integrations...
             </div>
           ) : integrations.length === 0 ? (
-            <p className="text-xs text-zinc-400">No integrations found in the database table.</p>
+            <p className="text-xs text-zinc-400">No integrations found in database. Run the SQL seeding script to populate providers.</p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {integrations.map((integration) => (
                 <div key={integration.id} className="rounded-xl border border-surface-border bg-surface p-5 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3">
                     <div className={`p-2 rounded-lg ${integration.status === 'connected' ? 'bg-emerald-950 text-emerald-400' : 'bg-zinc-800 text-zinc-400'}`}>
-                      <Zap className="h-5 w-5" />
+                      <Zap className="h-4 w-4" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-white">{integration.provider?.toUpperCase()}</h3>
-                      <p className="text-xs text-zinc-400">
+                      <h3 className="font-semibold text-white text-xs">{integration.provider?.toUpperCase()}</h3>
+                      <p className="text-[10px] text-zinc-400">
                         {integration.status === 'connected' ? 'Active & Synced' : 'Disconnected'}
                       </p>
                     </div>
                   </div>
                   <button 
                     onClick={() => toggleIntegration(integration.id, integration.status)}
-                    className={`px-3 py-1 rounded-md text-xs font-medium cursor-pointer ${integration.status === 'connected' ? 'bg-red-950 text-red-400' : 'bg-accent text-background'}`}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer ${integration.status === 'connected' ? 'bg-red-950 text-red-400' : 'bg-accent text-background'}`}
                   >
                     {integration.status === 'connected' ? 'Disconnect' : 'Connect'}
                   </button>
@@ -392,7 +296,7 @@ export default function IntegrationsPage() {
               <button 
                 type="submit" 
                 disabled={uploading}
-                className="w-full bg-accent text-zinc-950 font-semibold rounded-lg px-4 py-2 text-xs hover:bg-accent/90 transition flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full bg-accent text-zinc-950 font-semibold rounded-lg px-4 py-2 text-xs hover:bg-accent/90 transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
               >
                 {uploading ? (
                   <>

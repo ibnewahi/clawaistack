@@ -1,17 +1,24 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Cpu, Zap, FileText, Settings } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Cpu, Zap, FileText, Settings, LogOut } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 export default function Sidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
 
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { name: 'AI Claws', path: '/claws', icon: Cpu, badge: '5' }, // Updated badge count to 5
+    { name: 'AI Claws', path: '/claws', icon: Cpu, badge: '5' },
     { name: 'Integrations', path: '/integrations', icon: Zap },
     { name: 'Reports', path: '/reports', icon: FileText },
     { name: 'Settings', path: '/settings', icon: Settings },
   ];
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate('/login');
+  };
 
   return (
     <aside className="w-64 bg-surface border-r border-surface-border flex flex-col justify-between select-none">
@@ -60,9 +67,17 @@ export default function Sidebar() {
         </nav>
       </div>
 
-      {/* System Status Footer */}
-      <div className="p-4 border-t border-surface-border">
-        <div className="flex items-center gap-2 text-[11px] text-emerald-400">
+      {/* Footer: Sign Out & System Status */}
+      <div className="p-4 border-t border-surface-border space-y-3">
+        <button
+          onClick={handleSignOut}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-red-400 hover:bg-red-950/40 border border-red-500/10 transition"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Sign Out</span>
+        </button>
+
+        <div className="flex items-center gap-2 text-[11px] text-emerald-400 pt-1">
           <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
           <span>System Operational</span>
         </div>
