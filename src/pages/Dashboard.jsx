@@ -1,315 +1,177 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { Zap, FileText } from 'lucide-react';
+import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
-import { Bot, ArrowUpRight, TrendingUp, CheckCircle2, Loader2, Activity } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { useNavigate } from 'react-router-dom';
 
-export default function DashboardPage() {
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [activeClawsCount, setActiveClawsCount] = useState(0);
-  const [totalClawsCount, setTotalClawsCount] = useState(0);
-  const [clawsList, setClawsList] = useState([]);
-  const [workspace, setWorkspace] = useState({
-    name: 'ClawAI Stack Int',
-    currency: 'CAD ($)',
-  });
-  const [arMetrics, setArMetrics] = useState({
-    total: 0,
-    count: 0,
-  });
-  const [financialMetrics, setFinancialMetrics] = useState({
-    cashBalance: 0,
-    netBurn: 0,
-    currentRatio: 0,
-    quickRatio: 0,
-    ebitda: 0,
-    grossMargin: 0,
-  });
-  const [executionLogs, setExecutionLogs] = useState([]);
+// Sub-view imports
+import OverviewView from '../components/views/OverviewView';
+import ClawsView from '../components/views/ClawsView';
+import IntegrationsView from '../components/views/IntegrationsView';
+import ReportsView from '../components/views/ReportsView';
+import SettingsView from '../components/views/SettingsView';
 
-  useEffect(() => {
-    async function fetchDashboardData() {
-      try {
-        // Safe user check: verify session first without breaking navigation if pending
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError || !session) {
-          // If session is truly missing, gracefully redirect or let auth handle it
-          setLoading(false);
-          return;
-        }
+export default function Dashboard() {
+  const [activeTab, setActiveTab] = useState('Dashboard');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState('ClawAI Stack Int Ltd');
+  const [hideMetrics, setHideMetrics] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState(null);
+  const [logFilter, setLogFilter] = useState('All');
 
-        const userId = session.user?.id;
-
-        // 1. Fetch workspace settings
-        let settingsQuery = supabase.from('workspace_settings').select('*');
-        if (userId) {
-          settingsQuery = settingsQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        }
-        const { data: settings } = await settingsQuery.maybeSingle();
-
-        if (settings) {
-          setWorkspace({
-            name: settings.workspace_name || 'ClawAI Stack Int',
-            currency: settings.currency || 'CAD ($)',
-          });
-        }
-
-        // 2. Fetch claws config
-        let clawsQuery = supabase.from('claws_config').select('*');
-        if (userId) {
-          clawsQuery = clawsQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        }
-        const { data: claws } = await clawsQuery;
-
-        if (claws) {
-          setClawsList(claws);
-          const activeCount = claws.filter((c) => c.status === 'Active').length;
-          setActiveClawsCount(activeCount);
-          setTotalClawsCount(claws.length);
-        }
-
-        // 3. Fetch overdue invoices (AR Metrics)
-        let invoicesQuery = supabase.from('invoices').select('amount, status');
-        if (userId) {
-          invoicesQuery = invoicesQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        }
-        const { data: overdueInvoices } = await invoicesQuery;
-
-        if (overdueInvoices) {
-          const filtered = overdueInvoices.filter(inv => inv.status?.toLowerCase() === 'overdue');
-          const sum = filtered.reduce((acc, inv) => acc + Number(inv.amount), 0);
-          setArMetrics({
-            total: sum,
-            count: filtered.length,
-          });
-        }
-
-        // 4. Fetch Cash Flow metrics
-        let cashQuery = supabase.from('cash_flow_records').select('*').order('created_at', { ascending: false }).limit(1);
-        if (userId) cashQuery = cashQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        const { data: cashData } = await cashQuery;
-        if (cashData && cashData.length > 0) {
-          setFinancialMetrics(prev => ({
-            ...prev,
-            cashBalance: cashData[0].cash_balance || 0,
-            netBurn: cashData[0].net_burn || 0,
-          }));
-        }
-
-        // 5. Fetch Working Capital metrics
-        let wcQuery = supabase.from('working_capital_metrics').select('*').order('created_at', { ascending: false }).limit(1);
-        if (userId) wcQuery = wcQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        const { data: wcData } = await wcQuery;
-        if (wcData && wcData.length > 0) {
-          setFinancialMetrics(prev => ({
-            ...prev,
-            currentRatio: wcData[0].current_ratio || 0,
-            quickRatio: wcData[0].quick_ratio || 0,
-          }));
-        }
-
-        // 6. Fetch Profitability metrics
-        let profQuery = supabase.from('profitability_metrics').select('*').order('created_at', { ascending: false }).limit(1);
-        if (userId) profQuery = profQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        const { data: profData } = await profQuery;
-        if (profData && profData.length > 0) {
-          setFinancialMetrics(prev => ({
-            ...prev,
-            ebitda: profData[0].ebitda || 0,
-            grossMargin: profData[0].gross_margin_pct || 0,
-          }));
-        }
-
-        // 7. Fetch Claw Execution Logs
-        let logsQuery = supabase.from('claw_execution_logs').select('*').order('created_at', { ascending: false }).limit(5);
-        if (userId) logsQuery = logsQuery.or(`user_id.eq.${userId},user_id.is.null`);
-        const { data: logsData } = await logsQuery;
-        if (logsData) {
-          setExecutionLogs(logsData);
-        }
-
-      } catch (err) {
-        console.error('Error loading dashboard data:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchDashboardData();
-  }, []);
-
-  const getCurrencySymbol = (curr) => {
-    if (!curr) return '$';
-    if (curr.includes('GBP')) return '£';
-    if (curr.includes('EUR')) return '€';
-    if (curr.includes('CAD')) return 'CA$';
-    return '$';
+  const showNotification = (msg) => {
+    setNotificationMessage(msg);
+    setTimeout(() => {
+      setNotificationMessage(null);
+    }, 3500);
   };
 
-  const currencySymbol = getCurrencySymbol(workspace.currency);
+  const handleCompanyChange = (newCompany) => {
+    setSelectedCompany(newCompany);
+    showNotification(`Switched active entity to "${newCompany}"`);
+  };
+
+  const handleSyncLedger = () => {
+    setIsSyncing(true);
+    setTimeout(() => {
+      setIsSyncing(false);
+      showNotification('Ledger synced successfully with banking & ERP feeds');
+    }, 1200);
+  };
+
+  const handleTriggerAgent = (agentName) => {
+    showNotification(`Triggered ${agentName} agent execution manual run`);
+  };
+
+  const [clawsList, setClawsList] = useState([
+    { id: 'bookkeeper', name: 'Bookkeeper Claw', key: 'bookkeeper-claw', desc: 'Auto-categorizes transactions, reconciles bank feeds & posts general ledger journal entries.', status: 'Active', tasksToday: 14, accuracy: '100%' },
+    { id: 'ar', name: 'AR Collector Claw', key: 'ar-collector-claw', desc: 'Monitors unpaid invoices, sends automated email reminders, and manages escalation workflows.', status: 'Active', tasksToday: 6, accuracy: '100%' },
+    { id: 'ap', name: 'AP Matcher Claw', key: 'ap-claw', desc: 'Extracts line items from vendor bills, runs 3-way matching, and queues payouts for CFO approval.', status: 'Active', tasksToday: 3, accuracy: '100%' },
+    { id: 'cfo', name: 'CFO Forecast Claw', key: 'cfo-claw', desc: 'Computes real-time runway, cash flow projections, EBITDA metrics, and burn rate warnings.', status: 'Active', tasksToday: 2, accuracy: '100%' },
+    { id: 'controller', name: 'Controller Audit Claw', desc: 'Scans ledger for duplicate payouts, unexpected tax anomalies, and compliance audit gaps.', status: 'Active', key: 'controller-claw', tasksToday: 8, accuracy: '100%' },
+  ]);
+
+  const toggleClawStatus = (id) => {
+    setClawsList(prev => prev.map(c => {
+      if (c.id === id) {
+        const nextStatus = c.status === 'Active' ? 'Paused' : 'Active';
+        showNotification(`${c.name} status updated to ${nextStatus}`);
+        return { ...c, status: nextStatus };
+      }
+      return c;
+    }));
+  };
+
+  const logsData = [
+    { id: 1, type: 'Reconciliation', claw: 'bookkeeper-claw', desc: 'Bank Feed Reconciliation', time: 'Just now', accuracy: '100%' },
+    { id: 2, type: 'AR Follow-up', claw: 'ar-collector-claw', desc: 'Automated Follow-up Email Sent', time: '14m ago', accuracy: '100%' },
+    { id: 3, type: '3-Way Match', claw: 'ap-claw', desc: 'Vendor Bill 3-Way Match Verified', time: '1h ago', accuracy: '100%' },
+    { id: 4, type: 'Forecasts', claw: 'cfo-claw', desc: 'Runway & Cash Flow Forecast Updated', time: '3h ago', accuracy: '100%' },
+    { id: 5, type: 'Audit', claw: 'controller-claw', desc: 'Anomaly Detection Audit Completed', time: '12m ago', accuracy: '100%' },
+  ];
+
+  const filteredLogs = logFilter === 'All' 
+    ? logsData 
+    : logsData.filter(log => log.type.toLowerCase() === logFilter.toLowerCase());
 
   return (
-    <div className="flex h-screen bg-background text-zinc-100 overflow-hidden">
-      <Sidebar />
+    <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex font-sans selection:bg-emerald-500/30">
+      
+      <Sidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        isCollapsed={isSidebarCollapsed} 
+        setIsCollapsed={setIsSidebarCollapsed} 
+      />
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        <header className="flex items-center justify-between border-b border-surface-border px-8 py-4 bg-surface/50 backdrop-blur">
-          <div>
-            <h1 className="text-xl font-bold text-white">{workspace.name}</h1>
-            <p className="text-xs text-zinc-400">Real-time overview of active AI Claws & financial intelligence</p>
+      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+        
+        <Header 
+          selectedCompany={selectedCompany}
+          onCompanyChange={handleCompanyChange}
+          hideMetrics={hideMetrics}
+          onHideMetricsToggle={() => setHideMetrics(!hideMetrics)}
+          onSync={handleSyncLedger}
+          isSyncing={isSyncing}
+          onOpenUpload={() => setIsUploadOpen(true)}
+        />
+
+        {notificationMessage && (
+          <div className="fixed bottom-5 right-5 z-50 bg-[#13151b] border border-emerald-500/40 text-emerald-400 text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 animate-in slide-in-from-bottom-3 duration-200">
+            <Zap className="h-4 w-4 shrink-0 text-emerald-400" />
+            <span>{notificationMessage}</span>
           </div>
-        </header>
+        )}
 
-        <main className="p-8 space-y-6">
-          {loading ? (
-            <div className="flex items-center gap-2 text-xs text-zinc-400">
-              <Loader2 className="h-4 w-4 animate-spin text-accent" />
-              Loading workspace dashboard...
-            </div>
-          ) : (
-            <>
-              {/* Key Metric Cards */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-xl border border-surface-border bg-surface p-5">
-                  <div className="flex items-center justify-between text-zinc-400 text-xs">
-                    <span>Active AI Claws</span>
-                    <Bot className="h-4 w-4 text-accent" />
-                  </div>
-                  <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-2xl font-bold text-white">
-                      {activeClawsCount} / {totalClawsCount || 5}
-                    </span>
-                    <span className="text-xs text-emerald-400 flex items-center gap-0.5">
-                      <ArrowUpRight className="h-3 w-3" /> Live
-                    </span>
-                  </div>
-                </div>
+        {/* Tab View Orchestrator */}
+        {activeTab === 'Dashboard' && (
+          <OverviewView 
+            selectedCompany={selectedCompany}
+            hideMetrics={hideMetrics}
+            handleTriggerAgent={handleTriggerAgent}
+            clawsList={clawsList}
+            toggleClawStatus={toggleClawStatus}
+            logFilter={logFilter}
+            setLogFilter={setLogFilter}
+            filteredLogs={filteredLogs}
+          />
+        )}
 
-                <div className="rounded-xl border border-surface-border bg-surface p-5">
-                  <div className="flex items-center justify-between text-zinc-400 text-xs">
-                    <span>Cash Balance & Net Burn</span>
-                    <TrendingUp className="h-4 w-4 text-emerald-400" />
-                  </div>
-                  <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-2xl font-bold text-white">
-                      {currencySymbol}{financialMetrics.cashBalance.toLocaleString()}
-                    </span>
-                    <span className="text-xs text-rose-400">
-                      {currencySymbol}{financialMetrics.netBurn.toLocaleString()} net
-                    </span>
-                  </div>
-                </div>
+        {activeTab === 'AI Claws' && (
+          <ClawsView 
+            selectedCompany={selectedCompany}
+            clawsList={clawsList}
+            toggleClawStatus={toggleClawStatus}
+            handleTriggerAgent={handleTriggerAgent}
+            showNotification={showNotification}
+          />
+        )}
 
-                <div className="rounded-xl border border-surface-border bg-surface p-5">
-                  <div className="flex items-center justify-between text-zinc-400 text-xs">
-                    <span>Overdue AR Collected</span>
-                    <span className="text-xs font-bold text-accent">{currencySymbol}</span>
-                  </div>
-                  <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-2xl font-bold text-white">
-                      {currencySymbol}{arMetrics.total.toLocaleString()}
-                    </span>
-                    <span className="text-xs text-emerald-400">{arMetrics.count} Invoices</span>
-                  </div>
-                </div>
+        {activeTab === 'Integrations' && (
+          <IntegrationsView showNotification={showNotification} />
+        )}
 
-                <div className="rounded-xl border border-surface-border bg-surface p-5">
-                  <div className="flex items-center justify-between text-zinc-400 text-xs">
-                    <span>Liquidity & EBITDA</span>
-                    <CheckCircle2 className="h-4 w-4 text-indigo-400" />
-                  </div>
-                  <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-xl font-bold text-white">
-                      {financialMetrics.currentRatio}x CR
-                    </span>
-                    <span className="text-xs text-emerald-400">
-                      EBITDA: {currencySymbol}{financialMetrics.ebitda.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-              </div>
+        {activeTab === 'Reports' && (
+          <ReportsView showNotification={showNotification} />
+        )}
 
-              {/* Secondary Advanced Metrics Grid */}
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                <div className="rounded-xl border border-surface-border bg-surface p-5">
-                  <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">Liquidity Ratios</h3>
-                  <div className="flex justify-between items-center py-2 border-b border-surface-border/50 text-xs">
-                    <span className="text-zinc-300">Current Ratio</span>
-                    <span className="font-bold text-white">{financialMetrics.currentRatio}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 text-xs">
-                    <span className="text-zinc-300">Quick Ratio (Acid-Test)</span>
-                    <span className="font-bold text-white">{financialMetrics.quickRatio}</span>
-                  </div>
-                </div>
+        {activeTab === 'Settings' && (
+          <SettingsView 
+            selectedCompany={selectedCompany} 
+            setSelectedCompany={setSelectedCompany} 
+            showNotification={showNotification} 
+          />
+        )}
 
-                <div className="rounded-xl border border-surface-border bg-surface p-5">
-                  <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">Profitability Health</h3>
-                  <div className="flex justify-between items-center py-2 border-b border-surface-border/50 text-xs">
-                    <span className="text-zinc-300">Gross Margin %</span>
-                    <span className="font-bold text-emerald-400">{financialMetrics.grossMargin}%</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 text-xs">
-                    <span className="text-zinc-300">Monthly EBITDA</span>
-                    <span className="font-bold text-white">{currencySymbol}{financialMetrics.ebitda.toLocaleString()}</span>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-surface-border bg-surface p-5">
-                  <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">Autonomous Task Health</h3>
-                  <div className="flex justify-between items-center py-2 border-b border-surface-border/50 text-xs">
-                    <span className="text-zinc-300">Tasks Today</span>
-                    <span className="font-bold text-white">22 Executed</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 text-xs">
-                    <span className="text-zinc-300">System Accuracy</span>
-                    <span className="font-bold text-emerald-400">100%</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Active Agents Summary Section */}
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <div className="rounded-xl border border-surface-border bg-surface p-6">
-                  <h2 className="text-sm font-semibold text-white mb-4">Autonomous Claws Status Summary</h2>
-                  <div className="space-y-3">
-                    {clawsList.map((claw) => (
-                      <div key={claw.id} className="flex items-center justify-between py-2 border-b border-surface-border/50 text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className={`h-2 w-2 rounded-full ${claw.status === 'Active' ? 'bg-emerald-400' : 'bg-zinc-500'}`}></span>
-                          <span className="font-medium text-white">{claw.name}</span>
-                        </div>
-                        <span className="text-zinc-400">{claw.role}</span>
-                        <span className={claw.status === 'Active' ? 'text-emerald-400 font-semibold' : 'text-zinc-400'}>
-                          {claw.status}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-surface-border bg-surface p-6">
-                  <h2 className="text-sm font-semibold text-white mb-4">Recent Claw Execution Logs</h2>
-                  <div className="space-y-3">
-                    {executionLogs.map((log) => (
-                      <div key={log.id} className="flex items-center justify-between py-2 border-b border-surface-border/50 text-xs">
-                        <div className="flex items-center gap-2">
-                          <Activity className="h-3.5 w-3.5 text-accent" />
-                          <span className="font-medium text-white">{log.claw_id}</span>
-                        </div>
-                        <span className="text-zinc-400 truncate max-w-[150px]">{log.task_name}</span>
-                        <span className="text-emerald-400 font-semibold">{log.accuracy_score}% Accuracy</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </main>
       </div>
+
+      {isUploadOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#13151b] border border-zinc-800 rounded-2xl max-w-md w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                Upload Document to {selectedCompany}
+              </h3>
+              <button onClick={() => setIsUploadOpen(false)} className="text-zinc-500 hover:text-white cursor-pointer">✕</button>
+            </div>
+            <div className="border-2 border-dashed border-zinc-800 rounded-xl p-8 text-center space-y-2 hover:border-emerald-500/50 transition cursor-pointer">
+              <FileText className="h-8 w-8 text-emerald-400 mx-auto" />
+              <p className="text-xs text-zinc-300 font-medium">Drag and drop receipts, bank statements or vendor bills</p>
+              <p className="text-[10px] text-zinc-500">Supports PDF, CSV, PNG, JPG up to 25MB</p>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setIsUploadOpen(false)} className="px-3 py-1.5 text-xs text-zinc-400 hover:text-white cursor-pointer">
+                Cancel
+              </button>
+              <button onClick={() => { setIsUploadOpen(false); showNotification('File uploaded and queued for processing'); }} className="px-4 py-1.5 bg-emerald-500 text-black font-semibold text-xs rounded-lg cursor-pointer">
+                Upload & Process
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

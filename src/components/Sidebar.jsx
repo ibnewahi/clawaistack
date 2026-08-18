@@ -1,86 +1,116 @@
 import React from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Cpu, Zap, FileText, Settings, LogOut } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { 
+  LayoutDashboard, 
+  Cpu, 
+  Layers, 
+  BarChart3, 
+  Settings, 
+  LogOut, 
+  PanelLeftClose, 
+  PanelLeft,
+  Sparkles
+} from 'lucide-react';
 
-export default function Sidebar() {
-  const location = useLocation();
-  const navigate = useNavigate();
-
+export default function Sidebar({ activeTab, setActiveTab, isCollapsed, setIsCollapsed }) {
   const navItems = [
-    { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { name: 'AI Claws', path: '/claws', icon: Cpu, badge: '5' },
-    { name: 'Integrations', path: '/integrations', icon: Zap },
-    { name: 'Reports', path: '/reports', icon: FileText },
-    { name: 'Settings', path: '/settings', icon: Settings },
+    { name: 'Dashboard', icon: LayoutDashboard },
+    { name: 'AI Claws', icon: Cpu, badge: '5' },
+    { name: 'Integrations', icon: Layers },
+    { name: 'Reports', icon: BarChart3 },
+    { name: 'Settings', icon: Settings },
   ];
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate('/login');
-  };
-
   return (
-    <aside className="w-64 bg-surface border-r border-surface-border flex flex-col justify-between select-none">
+    <aside 
+      className={`h-screen bg-[#0d0e12] border-r border-zinc-800/80 flex flex-col justify-between transition-all duration-300 sticky top-0 z-40 shrink-0 ${
+        isCollapsed ? 'w-16' : 'w-64'
+      }`}
+    >
+      {/* Sidebar Header */}
       <div>
-        {/* Logo / Header */}
-        <div className="p-6 border-b border-surface-border flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-accent flex items-center justify-center font-bold text-zinc-950">
-            C
+        <div className="h-16 px-4 border-b border-zinc-800/80 flex items-center justify-between">
+          <div className={`flex items-center gap-3 overflow-hidden ${isCollapsed ? 'justify-center w-full' : ''}`}>
+            {/* Logo Icon */}
+            <div className="h-8 w-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
+              <span className="text-emerald-400 font-extrabold text-sm font-mono">C</span>
+            </div>
+            
+            {!isCollapsed && (
+              <div className="flex flex-col truncate">
+                <span className="text-sm font-bold text-white tracking-tight leading-none">ClawAI Stack</span>
+                <span className="text-[10px] text-zinc-500 font-medium mt-0.5">Autonomous Finance</span>
+              </div>
+            )}
           </div>
-          <div>
-            <h1 className="font-bold text-white text-sm">ClawAI Stack</h1>
-            <p className="text-[10px] text-zinc-400">Autonomous Financial Intelligence</p>
-          </div>
+
+          {!isCollapsed && (
+            <button 
+              onClick={() => setIsCollapsed(true)}
+              className="text-zinc-500 hover:text-zinc-300 p-1 rounded-lg hover:bg-zinc-800/50 transition cursor-pointer"
+              title="Collapse Sidebar"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
-        {/* Navigation Links */}
-        <nav className="p-4 space-y-1.5">
+        {/* Navigation Items */}
+        <nav className="p-3 space-y-1">
+          {isCollapsed && (
+            <button 
+              onClick={() => setIsCollapsed(false)}
+              className="w-full py-2 flex justify-center text-zinc-500 hover:text-zinc-300 mb-2 cursor-pointer"
+              title="Expand Sidebar"
+            >
+              <PanelLeft className="h-4 w-4" />
+            </button>
+          )}
+
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.path;
+            const isActive = activeTab === item.name;
 
             return (
-              <Link
+              <button
                 key={item.name}
-                to={item.path}
-                className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition ${
+                onClick={() => setActiveTab(item.name)}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition cursor-pointer ${
                   isActive 
-                    ? 'bg-accent/10 text-accent border border-accent/20' 
-                    : 'text-zinc-400 hover:text-white hover:bg-surface-border/50'
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 border border-transparent'
                 }`}
+                title={isCollapsed ? item.name : undefined}
               >
-                <div className="flex items-center gap-3">
-                  <Icon className="h-4 w-4" />
-                  <span>{item.name}</span>
+                <div className={`flex items-center gap-3 ${isCollapsed ? 'mx-auto' : ''}`}>
+                  <Icon className={`h-4 w-4 ${isActive ? 'text-emerald-400' : 'text-zinc-400'}`} />
+                  {!isCollapsed && <span>{item.name}</span>}
                 </div>
-                {item.badge && (
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                    isActive ? 'bg-accent text-zinc-950' : 'bg-zinc-800 text-zinc-300'
+
+                {!isCollapsed && item.badge && (
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono ${
+                    isActive ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-800 text-zinc-400'
                   }`}>
                     {item.badge}
                   </span>
                 )}
-              </Link>
+              </button>
             );
           })}
         </nav>
       </div>
 
-      {/* Footer: Sign Out Button & System Status */}
-      <div className="p-4 border-t border-surface-border space-y-3">
-        <button
-          onClick={handleSignOut}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-red-400 hover:bg-red-950/40 border border-red-500/10 transition cursor-pointer"
+      {/* Sidebar Footer / Sign Out */}
+      <div className="p-3 border-t border-zinc-800/80">
+        <button 
+          onClick={() => alert("Signing out...")}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition cursor-pointer ${
+            isCollapsed ? 'justify-center' : ''
+          }`}
+          title={isCollapsed ? "Sign Out" : undefined}
         >
-          <LogOut className="h-4 w-4" />
-          <span>Sign Out</span>
+          <LogOut className="h-4 w-4 text-rose-400" />
+          {!isCollapsed && <span>Sign Out</span>}
         </button>
-
-        <div className="flex items-center gap-2 text-[11px] text-emerald-400 pt-1">
-          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>System Operational</span>
-        </div>
       </div>
     </aside>
   );
