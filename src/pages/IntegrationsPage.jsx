@@ -6,14 +6,20 @@ import { Loader2, Zap, Upload, FileText, CheckCircle2, RefreshCw, ArrowRight } f
 export default function IntegrationsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [integrations, setIntegrations] = useState([]);
+  
+  // Default fallback unique connectors
+  const [integrations, setIntegrations] = useState([
+    { id: '1', provider: 'odoo', status: 'disconnected' },
+    { id: '2', provider: 'zoho', status: 'disconnected' },
+    { id: '3', provider: 'xero', status: 'disconnected' },
+    { id: '4', provider: 'qbo', status: 'disconnected' }
+  ]);
   
   const [fetchingQueue, setFetchingQueue] = useState(true);
   const [queueItems, setQueueItems] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [assignedClaw, setAssignedClaw] = useState('bookkeeper-claw');
   const [uploading, setUploading] = useState(false);
-  const [uploadStatusText, setUploadStatusText] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -25,24 +31,19 @@ export default function IntegrationsPage() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
-      // 1. Fetch integrations table and self-heal missing providers if needed
-      let { data: integData } = await supabase.from('integrations').select('*');
+      let { data: integData, error } = await supabase.from('integrations').select('*');
       
-      if (!integData || integData.length === 0) {
-        const defaults = [
-          { provider: 'odoo', status: 'disconnected' },
-          { provider: 'zoho', status: 'connected' },
-          { provider: 'xero', status: 'disconnected' },
-          { provider: 'qbo', status: 'disconnected' }
-        ];
-        await supabase.from('integrations').insert(defaults);
-        const { data: refreshedInteg } = await supabase.from('integrations').select('*');
-        integData = refreshedInteg;
+      if (!error && integData && integData.length > 0) {
+        // Deduplicate by provider name so we never show repeats
+        const uniqueMap = new Map();
+        integData.forEach(item => {
+          if (!uniqueMap.has(item.provider)) {
+            uniqueMap.set(item.provider, item);
+          }
+        });
+        setIntegrations(Array.from(uniqueMap.values()));
       }
-      
-      setIntegrations(integData || []);
 
-      // 2. Fetch file queue table
       let queueQuery = supabase.from('file_processing_queue').select('*').order('created_at', { ascending: false });
       if (user?.id) {
         queueQuery = queueQuery.or(`user_id.eq.${user.id},user_id.is.null`);
@@ -51,7 +52,7 @@ export default function IntegrationsPage() {
       setQueueItems(queueData || []);
 
     } catch (err) {
-      console.error("Error loading integrations page data:", err);
+      console.error("Error loading data:", err);
     } finally {
       setLoading(false);
       setFetchingQueue(false);
@@ -66,8 +67,8 @@ export default function IntegrationsPage() {
 
   const toggleIntegration = async (id, currentStatus) => {
     const newStatus = currentStatus === 'connected' ? 'disconnected' : 'connected';
-    await supabase.from('integrations').update({ status: newStatus }).eq('id', id);
     setIntegrations(prev => prev.map(i => i.id === id ? { ...i, status: newStatus } : i));
+    await supabase.from('integrations').update({ status: newStatus }).eq('id', id);
   };
 
   async function handleFileUpload(e) {
@@ -80,7 +81,6 @@ export default function IntegrationsPage() {
     setUploading(true);
     setSuccessMessage('');
     setErrorMessage('');
-    setUploadStatusText('Preparing secure file upload...');
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -100,7 +100,6 @@ export default function IntegrationsPage() {
         ocr_used: true
       };
 
-      setUploadStatusText('Logging into processing queue...');
       await supabase.from('file_processing_queue').insert([
         {
           user_id: userId || null,
@@ -121,7 +120,6 @@ export default function IntegrationsPage() {
       setErrorMessage(err.message || 'Error processing file.');
     } finally {
       setUploading(false);
-      setUploadStatusText('');
     }
   }
 
@@ -146,39 +144,36 @@ export default function IntegrationsPage() {
           </button>
         </div>
 
-        {/* Connected Software Providers (Odoo, Zoho, Xero, QBO) */}
+        {/* Connected Software Providers (Exactly 4 Unique Cards) */}
         <div>
           <h2 className="text-sm font-semibold text-white mb-4">Connected Software Providers</h2>
-          {loading ? (
-            <div className="flex items-center gap-2 text-xs text-zinc-400">
-              <Loader2 className="h-5 w-5 animate-spin text-accent" />
-              Loading integrations...
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {integrations.map((integration) => (
-                <div key={integration.id} className="rounded-xl border border-surface-border bg-surface p-5 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${integration.status === 'connected' ? 'bg-emerald-950 text-emerald-400' : 'bg-zinc-800 text-zinc-400'}`}>
-                      <Zap className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-white text-xs">{integration.provider?.toUpperCase()}</h3>
-                      <p className="text-[10px] text-zinc-400">
-                        {integration.status === 'connected' ? 'Active & Synced' : 'Disconnected'}
-                      </p>
-                    </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {integrations.map((integration) => (
+              <div key={integration.id || integration.provider} className="rounded-xl border border-surface-border bg-surface p-5 flex items-center justify-between shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${integration.status === 'connected' ? 'bg-emerald-950 text-emerald-400' : 'bg-zinc-800 text-zinc-400'}`}>
+                    <Zap className="h-4 w-4" />
                   </div>
-                  <button 
-                    onClick={() => toggleIntegration(integration.id, integration.status)}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer ${integration.status === 'connected' ? 'bg-red-950 text-red-400' : 'bg-accent text-background'}`}
-                  >
-                    {integration.status === 'connected' ? 'Disconnect' : 'Connect'}
-                  </button>
+                  <div>
+                    <h3 className="font-semibold text-white text-xs uppercase">{integration.provider}</h3>
+                    <p className="text-[10px] text-zinc-400">
+                      {integration.status === 'connected' ? 'Active & Synced' : 'Disconnected'}
+                    </p>
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
+                <button 
+                  onClick={() => toggleIntegration(integration.id, integration.status)}
+                  className={`px-3 py-1.5 rounded-md text-[11px] font-medium transition cursor-pointer ${
+                    integration.status === 'connected' 
+                      ? 'bg-red-950/80 text-red-400 hover:bg-red-900' 
+                      : 'bg-accent text-zinc-950 hover:bg-accent/90 font-semibold'
+                  }`}
+                >
+                  {integration.status === 'connected' ? 'Disconnect' : 'Connect'}
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Universal Document Ingestion Hub */}
@@ -207,7 +202,7 @@ export default function IntegrationsPage() {
                   type="file" 
                   accept=".pdf,.png,.jpg,.jpeg,.csv,.xlsx,.xls"
                   onChange={(e) => setSelectedFile(e.target.files[0])}
-                  className="w-full bg-background border border-surface-border rounded-lg px-3 py-1.5 text-xs text-zinc-300 file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-zinc-950 hover:file:bg-accent/90 focus:outline-none"
+                  className="w-full bg-background border border-surface-border rounded-lg px-3 py-1.5 text-xs text-zinc-300 file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-zinc-950 hover:file:bg-accent/90 focus:outline-none cursor-pointer"
                   required
                 />
               </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -58,7 +58,19 @@ export default function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      {/* If logged in, root '/' shows Dashboard. If not, show LandingPage */}
+      <Route 
+        path="/" 
+        element={
+          loading ? (
+            <div className="flex h-screen items-center justify-center bg-background text-zinc-400 text-xs">Loading...</div>
+          ) : session ? (
+            <Dashboard />
+          ) : (
+            <LandingPage />
+          )
+        } 
+      />
       <Route path="/auth" element={<Auth />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
@@ -66,6 +78,7 @@ export default function App() {
       <Route path="/blog" element={<Blog />} />
       <Route path="/security" element={<Security />} />
       <Route path="/careers" element={<Careers />} />
+      
       <Route
         path="/dashboard"
         element={

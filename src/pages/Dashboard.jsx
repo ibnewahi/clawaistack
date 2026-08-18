@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
-import { Bot, ArrowUpRight, TrendingUp, CheckCircle2, Loader2, DollarSign, Activity, ShieldAlert } from 'lucide-react';
+import { Bot, ArrowUpRight, TrendingUp, CheckCircle2, Loader2, Activity } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useNavigate } from 'react-router-dom';
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [activeClawsCount, setActiveClawsCount] = useState(0);
   const [totalClawsCount, setTotalClawsCount] = useState(0);
@@ -29,8 +31,16 @@ export default function DashboardPage() {
   useEffect(() => {
     async function fetchDashboardData() {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        const userId = user?.id;
+        // Safe user check: verify session first without breaking navigation if pending
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError || !session) {
+          // If session is truly missing, gracefully redirect or let auth handle it
+          setLoading(false);
+          return;
+        }
+
+        const userId = session.user?.id;
 
         // 1. Fetch workspace settings
         let settingsQuery = supabase.from('workspace_settings').select('*');
@@ -131,6 +141,7 @@ export default function DashboardPage() {
   }, []);
 
   const getCurrencySymbol = (curr) => {
+    if (!curr) return '$';
     if (curr.includes('GBP')) return '£';
     if (curr.includes('EUR')) return '€';
     if (curr.includes('CAD')) return 'CA$';
