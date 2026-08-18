@@ -67,7 +67,7 @@ export default function Sidebar() {
         </nav>
       </div>
 
-      {/* Footer: Sign Out & System Status */}
+      {/* Footer: Sign Out Button & System Status */}
       <div className="p-4 border-t border-surface-border space-y-3">
         <button
           onClick={handleSignOut}
