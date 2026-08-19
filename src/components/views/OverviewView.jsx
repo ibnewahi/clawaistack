@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   TrendingUp, 
   ShieldCheck, 
   Zap, 
   DollarSign, 
   ArrowUpRight,
-  MoreVertical
+  MoreVertical,
+  Play,
+  FileText,
+  Settings
 } from 'lucide-react';
 
 export default function OverviewView({ 
@@ -16,10 +19,19 @@ export default function OverviewView({
   toggleClawStatus, 
   logFilter, 
   setLogFilter, 
-  filteredLogs 
+  filteredLogs,
+  showNotification 
 }) {
+  // State to track which claw's 3-dot dropdown menu is open
+  const [openMenuId, setOpenMenuId] = useState(null);
+
+  const toggleMenu = (e, id) => {
+    e.stopPropagation();
+    setOpenMenuId(openMenuId === id ? null : id);
+  };
+
   return (
-    <main className="flex-1 p-6 md:p-8 max-w-[1600px] w-full mx-auto space-y-6">
+    <main className="flex-1 p-6 md:p-8 max-w-[1600px] w-full mx-auto space-y-6" onClick={() => setOpenMenuId(null)}>
       {/* Workspace Title & Quick Agent Actions */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800/60 pb-5">
         <div>
@@ -140,7 +152,7 @@ export default function OverviewView({
 
           <div className="space-y-2.5">
             {clawsList.map((claw) => (
-              <div key={claw.id} className="p-3 bg-[#181a22] border border-zinc-800/80 rounded-xl flex items-center justify-between hover:border-zinc-700 transition">
+              <div key={claw.id} className="p-3 bg-[#181a22] border border-zinc-800/80 rounded-xl flex items-center justify-between hover:border-zinc-700 transition relative">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-emerald-400">
                     <Zap className="h-4 w-4" />
@@ -158,9 +170,53 @@ export default function OverviewView({
                   }`}>
                     {claw.status}
                   </span>
-                  <button onClick={() => toggleClawStatus(claw.id)} className="text-zinc-500 hover:text-white p-1 cursor-pointer">
-                    <MoreVertical className="h-4 w-4" />
-                  </button>
+                  
+                  {/* 3-Dot Menu Button & Dropdown */}
+                  <div className="relative">
+                    <button 
+                      onClick={(e) => toggleMenu(e, claw.id)} 
+                      className="text-zinc-500 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800/80 transition cursor-pointer"
+                      title="Options"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </button>
+
+                    {openMenuId === claw.id && (
+                      <div className="absolute right-0 mt-2 w-48 bg-[#13151b] border border-zinc-800 rounded-xl shadow-2xl z-20 py-1.5 animate-in fade-in zoom-in-95 duration-100">
+                        <button
+                          onClick={() => {
+                            handleTriggerAgent(claw.name);
+                            setOpenMenuId(null);
+                          }}
+                          className="w-full px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800/70 hover:text-emerald-400 flex items-center gap-2 transition cursor-pointer"
+                        >
+                          <Play className="h-3.5 w-3.5 text-emerald-400" />
+                          <span>Run Manually Now</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (showNotification) showNotification(`Opening execution logs for ${claw.name}`);
+                            setOpenMenuId(null);
+                          }}
+                          className="w-full px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800/70 hover:text-emerald-400 flex items-center gap-2 transition cursor-pointer"
+                        >
+                          <FileText className="h-3.5 w-3.5 text-zinc-400" />
+                          <span>View Execution Logs</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            toggleClawStatus(claw.id);
+                            setOpenMenuId(null);
+                          }}
+                          className="w-full px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800/70 hover:text-amber-400 flex items-center gap-2 transition cursor-pointer border-t border-zinc-800/60 mt-1 pt-2"
+                        >
+                          <Settings className="h-3.5 w-3.5 text-amber-400" />
+                          <span>{claw.status === 'Active' ? 'Pause Claw' : 'Activate Claw'}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                 </div>
               </div>
             ))}
