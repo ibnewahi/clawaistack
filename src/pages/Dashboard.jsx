@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Zap, FileText } from 'lucide-react';
+import { Zap } from 'lucide-react';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
+import FileIngestion from '../components/FileIngestion';
 
 // Sub-view imports
 import OverviewView from '../components/views/OverviewView';
@@ -12,7 +13,7 @@ import SettingsView from '../components/views/SettingsView';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('Dashboard');
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState('ClawAI Stack Int Ltd');
   const [hideMetrics, setHideMetrics] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -81,8 +82,14 @@ export default function Dashboard() {
       <Sidebar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
-        isCollapsed={isSidebarCollapsed} 
-        setIsCollapsed={setIsSidebarCollapsed} 
+        collapsed={collapsed} 
+        setCollapsed={setCollapsed} 
+        onSignOut={() => {
+          showNotification('Signing out...');
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 800);
+        }}
       />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
@@ -146,31 +153,13 @@ export default function Dashboard() {
 
       </div>
 
-      {isUploadOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#13151b] border border-zinc-800 rounded-2xl max-w-md w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                Upload Document to {selectedCompany}
-              </h3>
-              <button onClick={() => setIsUploadOpen(false)} className="text-zinc-500 hover:text-white cursor-pointer">✕</button>
-            </div>
-            <div className="border-2 border-dashed border-zinc-800 rounded-xl p-8 text-center space-y-2 hover:border-emerald-500/50 transition cursor-pointer">
-              <FileText className="h-8 w-8 text-emerald-400 mx-auto" />
-              <p className="text-xs text-zinc-300 font-medium">Drag and drop receipts, bank statements or vendor bills</p>
-              <p className="text-[10px] text-zinc-500">Supports PDF, CSV, PNG, JPG up to 25MB</p>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setIsUploadOpen(false)} className="px-3 py-1.5 text-xs text-zinc-400 hover:text-white cursor-pointer">
-                Cancel
-              </button>
-              <button onClick={() => { setIsUploadOpen(false); showNotification('File uploaded and queued for processing'); }} className="px-4 py-1.5 bg-emerald-500 text-black font-semibold text-xs rounded-lg cursor-pointer">
-                Upload & Process
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <FileIngestion 
+        isOpen={isUploadOpen} 
+        onClose={() => setIsUploadOpen(false)} 
+        onUploadSuccess={(file) => {
+          showNotification(`Successfully ingested ${file.name} for AI claw processing!`);
+        }}
+      />
 
     </div>
   );

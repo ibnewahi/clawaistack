@@ -1,243 +1,211 @@
-import React, { useState, useRef } from 'react';
-import { Upload, FileText, CheckCircle2, AlertCircle, X, File, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Upload, FileText, CheckCircle2, X, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { processFilePayload } from '../lib/fileProcessor';
 
-export default function FileIngestion({ onUploadSuccess }) {
-  const [isDragging, setIsDragging] = useState(false);
-  const [files, setFiles] = useState([]);
+export default function FileIngestion({ isOpen, onClose, onUploadSuccess }) {
+  const [dragActive, setDragActive] = useState(false);
+  const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState(null); // { type: 'success' | 'error', message: '' }
-  const fileInputRef = useRef(null);
+  const [uploadComplete, setUploadComplete] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [targetClaw, setTargetClaw] = useState('bookkeeper-claw');
 
-  const allowedTypes = ['text/csv', 'application/pdf'];
+  if (!isOpen) return null;
 
-  const handleDragOver = (e) => {
+  const handleDrag = (e) => {
     e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const validateAndAddFiles = (selectedFiles) => {
-    setUploadStatus(null);
-    const validFiles = [];
-    const errors = [];
-
-    Array.from(selectedFiles).forEach((file) => {
-      const extension = file.name.split('.').pop().toLowerCase();
-      if (allowedTypes.includes(file.type) || extension === 'csv' || extension === 'pdf') {
-        validFiles.push(file);
-      } else {
-        errors.push(`${file.name}: Only CSV bank statements and PDF invoices are supported.`);
-      }
-    });
-
-    if (errors.length > 0) {
-      setUploadStatus({ type: 'error', message: errors.join(' ') });
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setDragActive(false);
     }
-
-    setFiles((prev) => [...prev, ...validFiles]);
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      validateAndAddFiles(e.dataTransfer.files);
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setFile(e.dataTransfer.files[0]);
+      setErrorMessage(null);
     }
   };
 
-  const handleFileSelect = (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      validateAndAddFiles(e.target.files);
+  const handleChange = (e) => {
+    e.preventDefault();
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+      setErrorMessage(null);
     }
   };
 
-  const removeFile = (index) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleUpload = async () => {
-    if (files.length === 0) return;
-
+  const handleUploadAndProcess = async () => {
+    if (!file) return;
     setUploading(true);
-    setUploadStatus(null);
+    setErrorMessage(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id || 'anonymous';
-
-      for (const file of files) {
+      // 1. Upload raw file to Supabase Storage bucket
+      if (supabase) {
         const fileExt = file.name.split('.').pop();
-        const fileName = `${userId}/${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
-        const docType = fileExt.toLowerCase() === 'pdf' ? 'invoice_pdf' : 'bank_csv';
-
-        // 1. Storage Upload
-        const { error: storageError } = await supabase.storage
+        const filePath = `${targetClaw}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        
+        await supabase.storage
           .from('financial-documents')
-          .upload(fileName, file);
-
-        if (storageError) {
-          // Fallback if bucket doesn't exist yet: simulate pipeline readiness
-          console.warn('Storage upload note:', storageError.message);
-        }
-
-        // 2. Insert Ingestion Job Log into database
-        await supabase.from('document_ingestion_queue').insert([
-          {
-            user_id: userId !== 'anonymous' ? userId : null,
-            file_name: file.name,
-            file_type: docType,
-            status: 'Pending',
-            storage_path: fileName,
-          },
-        ]);
+          .upload(filePath, file)
+          .catch((e) => console.warn('Supabase storage fallback notice:', e.message));
       }
 
-      setUploadStatus({
-        type: 'success',
-        message: `Successfully uploaded ${files.length} document(s) for AI processing.`,
-      });
-      setFiles([]);
+      // 2. Run Parsing, Schema Validation, and Duplicate Engine
+      const pipelineResult = await processFilePayload(file, targetClaw);
 
-      if (onUploadSuccess) onUploadSuccess();
-    } catch (err) {
-      console.error('Upload Error:', err);
-      setUploadStatus({
-        type: 'error',
-        message: 'Failed to upload documents. Please check your storage bucket setup.',
-      });
-    } finally {
       setUploading(false);
+      setUploadComplete(true);
+
+      if (onUploadSuccess) {
+        onUploadSuccess({
+          name: file.name,
+          size: file.size,
+          targetClaw,
+          ...pipelineResult,
+        });
+      }
+
+      // Automatically reset & close modal after success feedback
+      setTimeout(() => {
+        setUploadComplete(false);
+        setFile(null);
+        onClose();
+      }, 1600);
+
+    } catch (err) {
+      console.error('Ingestion pipeline failed:', err);
+      setUploading(false);
+      setErrorMessage(err.message || 'Failed to process document schema.');
     }
   };
 
   return (
-    <div className="w-full space-y-4">
-      {/* Drag & Drop Zone */}
-      <div
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-        className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition ${
-          isDragging
-            ? 'border-accent bg-accent/5'
-            : 'border-surface-border bg-surface/50 hover:border-zinc-500 hover:bg-surface'
-        }`}
-      >
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileSelect}
-          multiple
-          accept=".csv,.pdf"
-          className="hidden"
-        />
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-[#13151b] border border-zinc-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl relative">
+        
+        {/* Close Button */}
+        <button 
+          onClick={onClose}
+          className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800/80 transition cursor-pointer"
+        >
+          <X className="h-5 w-5" />
+        </button>
 
-        <div className="flex flex-col items-center justify-center space-y-3">
-          <div className="h-12 w-12 rounded-full bg-surface-border/50 flex items-center justify-center text-accent">
-            <Upload className="h-6 w-6" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-white">
-              Drag & drop financial files, or <span className="text-accent underline">browse</span>
-            </p>
-            <p className="text-xs text-zinc-400 mt-1">
-              Supports CSV Bank Feeds & Vendor Invoice PDFs
-            </p>
-          </div>
+        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+          <Upload className="h-5 w-5 text-emerald-400" />
+          Ingest Financial Document
+        </h2>
+        <p className="text-xs text-zinc-400 mt-1">
+          Upload invoices, bank statements, or receipts for automated claw processing and reconciliation.
+        </p>
+
+        {/* Target Claw Pipeline Selector */}
+        <div className="mt-4">
+          <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1.5">
+            Target AI Claw Pipeline
+          </label>
+          <select
+            value={targetClaw}
+            onChange={(e) => setTargetClaw(e.target.value)}
+            className="w-full bg-[#181a22] border border-zinc-800 text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-emerald-500/50"
+          >
+            <option value="bookkeeper-claw">Bookkeeper Claw (Bank Statements / Receipts)</option>
+            <option value="ap-claw">AP Matcher Claw (Vendor Bills / Invoices)</option>
+            <option value="controller-claw">Controller Audit Claw (General Ledger Exports)</option>
+            <option value="cfo-claw">CFO Forecast Claw (P&L & Cash Reports)</option>
+          </select>
         </div>
-      </div>
 
-      {/* Status Messages */}
-      {uploadStatus && (
-        <div
-          className={`flex items-start gap-2.5 p-3.5 rounded-lg text-xs ${
-            uploadStatus.type === 'success'
-              ? 'bg-emerald-950/30 border border-emerald-500/20 text-emerald-400'
-              : 'bg-rose-950/30 border border-rose-500/20 text-rose-400'
+        {/* Drag & Drop Zone */}
+        <div 
+          onDragEnter={handleDrag}
+          onDragLeave={handleDrag}
+          onDragOver={handleDrag}
+          onDrop={handleDrop}
+          className={`mt-4 border-2 border-dashed rounded-xl p-8 text-center transition flex flex-col items-center justify-center ${
+            dragActive ? 'border-emerald-500 bg-emerald-500/5' : 'border-zinc-800 bg-[#181a22] hover:border-zinc-700'
           }`}
         >
-          {uploadStatus.type === 'success' ? (
-            <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+          {file ? (
+            <div className="flex flex-col items-center space-y-2">
+              <FileText className="h-10 w-10 text-emerald-400 animate-bounce" />
+              <span className="text-xs font-medium text-white font-mono">{file.name}</span>
+              <span className="text-[10px] text-zinc-500">{(file.size / 1024).toFixed(1)} KB</span>
+              <button 
+                onClick={() => { setFile(null); setErrorMessage(null); }}
+                className="text-[11px] text-rose-400 hover:underline mt-1 cursor-pointer"
+              >
+                Choose a different file
+              </button>
+            </div>
           ) : (
-            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+            <>
+              <div className="p-3 rounded-full bg-zinc-900 border border-zinc-800 text-emerald-400 mb-3">
+                <Upload className="h-6 w-6" />
+              </div>
+              <p className="text-xs text-zinc-300 font-medium">
+                Drag and drop your document here, or <label className="text-emerald-400 hover:underline cursor-pointer">browse<input type="file" className="hidden" onChange={handleChange} accept=".pdf,.csv,.xlsx,.xls,.png,.jpg,.json" /></label>
+              </p>
+              <p className="text-[10px] text-zinc-500 mt-1">Supports PDF, CSV, Excel, and JSON files up to 10MB</p>
+            </>
           )}
-          <span>{uploadStatus.message}</span>
         </div>
-      )}
 
-      {/* Staged File List */}
-      {files.length > 0 && (
-        <div className="space-y-2 border border-surface-border bg-surface rounded-xl p-4">
-          <div className="flex items-center justify-between text-xs font-semibold text-zinc-300 pb-2 border-b border-surface-border">
-            <span>Selected Files ({files.length})</span>
-            <button
-              onClick={() => setFiles([])}
-              className="text-zinc-500 hover:text-zinc-300 text-[11px]"
-            >
-              Clear all
-            </button>
+        {/* Error Alert */}
+        {errorMessage && (
+          <div className="mt-3 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs rounded-xl p-3 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{errorMessage}</span>
           </div>
+        )}
 
-          <div className="space-y-1.5 max-h-48 overflow-y-auto pt-1">
-            {files.map((file, idx) => {
-              const isPdf = file.name.endsWith('.pdf');
-              return (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between px-3 py-2 rounded-lg bg-surface-border/30 text-xs"
-                >
-                  <div className="flex items-center gap-2.5 truncate pr-2">
-                    {isPdf ? (
-                      <FileText className="h-4 w-4 text-rose-400 shrink-0" />
-                    ) : (
-                      <File className="h-4 w-4 text-emerald-400 shrink-0" />
-                    )}
-                    <span className="text-zinc-200 truncate">{file.name}</span>
-                    <span className="text-[10px] text-zinc-500">
-                      ({(file.size / 1024).toFixed(1)} KB)
-                    </span>
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeFile(idx);
-                    }}
-                    className="text-zinc-500 hover:text-rose-400 transition"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="pt-3">
-            <button
-              onClick={handleUpload}
-              disabled={uploading}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-accent text-zinc-950 font-semibold text-xs hover:bg-accent/90 transition disabled:opacity-50 cursor-pointer"
-            >
-              {uploading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Processing Uploads...</span>
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4" />
-                  <span>Submit to Ingestion Pipeline</span>
-                </>
-              )}
-            </button>
-          </div>
+        {/* Action Controls */}
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button 
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-xs font-medium bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white transition cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={handleUploadAndProcess}
+            disabled={!file || uploading || uploadComplete}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition cursor-pointer ${
+              !file 
+                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
+                : uploadComplete 
+                ? 'bg-emerald-500 text-black' 
+                : 'bg-emerald-500 hover:bg-emerald-400 text-black'
+            }`}
+          >
+            {uploading ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin"></span>
+                <span>Parsing & Validating...</span>
+              </>
+            ) : uploadComplete ? (
+              <>
+                <CheckCircle2 className="h-4 w-4" />
+                <span>Successfully Ingested!</span>
+              </>
+            ) : (
+              <>
+                <Upload className="h-4 w-4" />
+                <span>Upload & Process</span>
+              </>
+            )}
+          </button>
         </div>
-      )}
+
+      </div>
     </div>
   );
 }

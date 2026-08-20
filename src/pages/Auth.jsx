@@ -1,155 +1,102 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Zap, ArrowRight, Lock } from 'lucide-react';
 
-export default function Auth() {
+export default function AuthPage() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const navigate = useNavigate();
-
-  // Redirect to dashboard if session already exists
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        navigate('/dashboard', { replace: true });
-      } else {
-        setCheckingAuth(false);
-      }
-    });
-  }, [navigate]);
-
-  const handleSubmit = async (e) => {
+  const handleSignIn = (e) => {
     e.preventDefault();
-    setLoading(true);
+    setIsLoading(true);
 
-    if (isSignUp) {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            first_name: firstName,
-            last_name: lastName,
-          },
-        },
-      });
-
-      if (error) {
-        alert(error.message);
-      } else if (data?.session) {
-        navigate('/dashboard');
-      } else {
-        alert('Check your email for the confirmation link!');
-      }
-    } else {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        alert(error.message);
-      } else if (data?.session) {
-        navigate('/dashboard');
-      }
-    }
-
-    setLoading(false);
+    // Simulate secure authentication check
+    setTimeout(() => {
+      // 1. Set authentication token in browser storage
+      localStorage.setItem('clawai_auth', 'true');
+      
+      // 2. Clear loading and push to dashboard
+      setIsLoading(false);
+      navigate('/dashboard');
+    }, 800);
   };
 
-  if (checkingAuth) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white text-sm">
-        Authenticating...
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-xl">
-        <h2 className="text-2xl font-bold text-center mb-6">
-          {isSignUp ? 'Create an Account' : 'Welcome Back'}
+    <div className="min-h-screen bg-[#090a0f] flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans selection:bg-emerald-500/30">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <Link to="/" className="flex justify-center items-center gap-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+            C
+          </div>
+          <span className="text-2xl font-extrabold text-white tracking-tight">ClawAI Stack</span>
+        </Link>
+        <h2 className="mt-6 text-center text-3xl font-extrabold text-white tracking-tight">
+          Sign in to your workspace
         </h2>
+        <p className="mt-2 text-center text-sm text-zinc-400">
+          Or <Link to="/" className="font-medium text-emerald-400 hover:text-emerald-300">return to home page</Link>
+        </p>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {isSignUp && (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">First Name</label>
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-[#13151b] py-8 px-4 shadow-2xl sm:rounded-2xl sm:px-10 border border-zinc-800/80">
+          <form className="space-y-6" onSubmit={handleSignIn}>
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-zinc-300">
+                Email address
+              </label>
+              <div className="mt-1">
                 <input
-                  type="text"
+                  id="email"
+                  name="email"
+                  type="email"
                   required
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2.5 text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Last Name</label>
-                <input
-                  type="text"
-                  required
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2.5 text-white"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="appearance-none block w-full px-3 py-2 border border-zinc-800 bg-[#090a0f] rounded-xl shadow-sm placeholder-zinc-500 text-white focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                  placeholder="cfo@company.com"
                 />
               </div>
             </div>
-          )}
 
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Email</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2.5 text-white"
-              placeholder="you@example.com"
-            />
-          </div>
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-zinc-300">
+                Password
+              </label>
+              <div className="mt-1">
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="appearance-none block w-full px-3 py-2 border border-zinc-800 bg-[#090a0f] rounded-xl shadow-sm placeholder-zinc-500 text-white focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                  placeholder="••••••••"
+                />
+              </div>
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2.5 text-white"
-              placeholder="••••••••"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-50"
-          >
-            {loading ? 'Processing...' : isSignUp ? 'Sign Up' : 'Sign In'}
-          </button>
-        </form>
-
-        <div className="mt-4 text-center">
-          <button
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="text-xs text-slate-400 hover:text-white"
-          >
-            {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
-          </button>
-        </div>
-
-        <div className="mt-6 text-center">
-          <Link to="/" className="text-xs text-slate-500 hover:text-slate-400">
-            ← Back to Home
-          </Link>
+            <div>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-[#090a0f] bg-emerald-500 hover:bg-emerald-400 focus:outline-none transition cursor-pointer disabled:opacity-70"
+              >
+                {isLoading ? (
+                  <span className="flex items-center gap-2">
+                    <Lock className="h-4 w-4 animate-pulse" /> Authorizing...
+                  </span>
+                ) : (
+                  <>
+                    Sign In <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
