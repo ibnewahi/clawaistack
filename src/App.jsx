@@ -3,7 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 
 import LandingPage from './pages/LandingPage'; 
 import Dashboard from './pages/Dashboard';
-import AuthPage from './pages/auth';
+import AuthPage from './pages/Auth';
 
 // Security Guard Component
 const ProtectedRoute = ({ children }) => {
