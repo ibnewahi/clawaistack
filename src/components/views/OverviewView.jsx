@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   TrendingUp, 
   ShieldCheck, 
@@ -10,6 +10,7 @@ import {
   FileText,
   Settings
 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 export default function OverviewView({ 
   selectedCompany, 
@@ -24,6 +25,55 @@ export default function OverviewView({
 }) {
   // State to track which claw's 3-dot dropdown menu is open
   const [openMenuId, setOpenMenuId] = useState(null);
+
+  // Dynamic state for Autonomous Task Health KPI
+  const [taskHealth, setTaskHealth] = useState({
+    tasksToday: filteredLogs.length || 0,
+    accuracy: '100%'
+  });
+
+  // Fetch real-time total execution count & average accuracy score from Supabase
+  const fetchRealtimeTaskHealth = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('claw_execution_logs')
+        .select('accuracy_score');
+
+      if (!error && data) {
+        const totalTasks = data.length;
+        const avgAccuracy = totalTasks > 0
+          ? (data.reduce((acc, row) => acc + (row.accuracy_score || 100), 0) / totalTasks).toFixed(0)
+          : 100;
+
+        setTaskHealth({
+          tasksToday: totalTasks,
+          accuracy: `${avgAccuracy}%`
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching task health:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchRealtimeTaskHealth();
+
+    // Subscribe to live inserts on claw_execution_logs table
+    const channel = supabase
+      .channel('overview_task_health_realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'claw_execution_logs' },
+        () => {
+          fetchRealtimeTaskHealth();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const toggleMenu = (e, id) => {
     e.stopPropagation();
@@ -129,8 +179,8 @@ export default function OverviewView({
         <div className="bg-[#13151b] border border-zinc-800/80 rounded-2xl p-4">
           <span className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500">Autonomous Task Health</span>
           <div className="text-xs text-zinc-300 mt-1 flex gap-4">
-            <span>Tasks Today: <strong className="text-white font-mono">23 Executed</strong></span>
-            <span>Accuracy: <strong className="text-emerald-400 font-mono">100%</strong></span>
+            <span>Tasks Today: <strong className="text-white font-mono">{taskHealth.tasksToday} Executed</strong></span>
+            <span>Accuracy: <strong className="text-emerald-400 font-mono">{taskHealth.accuracy}</strong></span>
           </div>
         </div>
       </div>

@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Zap, Play, Loader2 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import FileIngestion from '../components/FileIngestion';
+import { AgentResultModal } from '../components/AgentResultModal';
+import { ClawExecutionLogs } from '../components/ClawExecutionLogs';
+
+// Shared Supabase Client Import
+import { supabase } from '../lib/supabase';
 
 // Sub-view imports
 import OverviewView from '../components/views/OverviewView';
@@ -11,12 +15,6 @@ import ClawsView from '../components/views/ClawsView';
 import IntegrationsView from '../components/views/IntegrationsView';
 import ReportsView from '../components/views/ReportsView';
 import SettingsView from '../components/views/SettingsView';
-
-// Initialize Supabase client
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-);
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('Dashboard');
@@ -31,6 +29,10 @@ export default function Dashboard() {
   // Supabase Edge Function Execution State
   const [isExecutingClaw, setIsExecutingClaw] = useState(false);
   const [executionResult, setExecutionResult] = useState(null);
+
+  // Agent Output Modal State
+  const [modalOpen, setModalOpen] = useState(false);
+  const [activeModalData, setActiveModalData] = useState(null);
 
   // Real-time Database Execution Logs State
   const [dbLogs, setDbLogs] = useState([]);
@@ -56,7 +58,7 @@ export default function Dashboard() {
     return `${Math.floor(diffInSeconds / 86400)}d ago`;
   };
 
-  // Fetch logs from Supabase & subscribe to real-time inserts
+  // Fetch logs from Supabase & subscribe to real-time inserts with deduplication
   useEffect(() => {
     let channel;
 
@@ -85,12 +87,16 @@ export default function Dashboard() {
 
     // Subscribe to live inserts on claw_execution_logs
     channel = supabase
-      .channel('realtime_claw_execution_logs')
+      .channel('dashboard_logs_realtime')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'claw_execution_logs' },
         (payload) => {
-          setDbLogs((prev) => [payload.new, ...prev.slice(0, 19)]);
+          setDbLogs((prev) => {
+            // Check if log already exists from optimistic UI insert
+            if (prev.some((log) => log.id === payload.new.id)) return prev;
+            return [payload.new, ...prev.slice(0, 19)];
+          });
         }
       )
       .subscribe();
@@ -115,7 +121,7 @@ export default function Dashboard() {
     }, 1200);
   };
 
-  // Dynamic Handler to invoke Supabase Edge Function for any individual Agent
+  // Dynamic Handler to invoke Supabase Edge Function with instant optimistic updates
   const handleTriggerAgent = async (clawIdentifier, customPrompt = '') => {
     showNotification(`Triggering ${clawIdentifier} execution...`);
     setIsExecutingClaw(true);
@@ -124,14 +130,25 @@ export default function Dashboard() {
       const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
 
       const defaultPrompts = {
-        'bookkeeper-claw': 'You are an expert Bookkeeper AI. Reconcile transaction logs, categorize GL entries, and flag unmatched items.',
+        'bookkeeper-claw': 'You are an expert Bookkeeper AI. Reconcile transaction logs. An unverified bill (INV-8890 for $12,500) requires 3-way AP matching. Return valid JSON containing "requires_ap_matching": true.',
         'ar-collector-claw': 'You are an AR Collection Manager. Analyze aging invoices, generate reminder workflows, and draft escalation notices.',
-        'ap-claw': 'You are an AP Matching Agent. Perform 3-way matching on bills, check line items, and queue payouts for approval.',
+        'ap-claw': 'You are an AP Matching Agent. Perform 3-way matching on bills, check line items, and queue payouts for approval. Return valid JSON containing "requires_controller_review": true.',
         'cfo-claw': 'You are an Autonomous CFO. Calculate real-time cash runway, burn rates, EBITDA metrics, and liquidity projections.',
         'controller-claw': 'You are a Corporate Controller. Audit ledgers for duplicate payouts, tax anomalies, and compliance gaps.'
       };
 
       const resolvedKey = clawIdentifier.includes('-claw') ? clawIdentifier : `${clawIdentifier.toLowerCase()}-claw`;
+
+      // Payload explicitly configured with test invoice data to trigger downstream agents
+      const payloadData = {
+        triggerSource: 'Manual Agent UI Trigger',
+        company: selectedCompany,
+        targetAudit: resolvedKey,
+        invoiceId: 'INV-8890',
+        amount: 12500,
+        notes: 'Unverified vendor bill requiring 3-way matching',
+        requires_ap_matching: true
+      };
 
       const { data, error } = await supabase.functions.invoke('execute-claw', {
         body: { 
@@ -139,11 +156,7 @@ export default function Dashboard() {
           version: '1.0', 
           systemPrompt: customPrompt || defaultPrompts[resolvedKey] || 'Execute autonomous finance audit task.', 
           rulesConfig: {}, 
-          payload: { 
-            triggerSource: 'Manual Agent UI Trigger', 
-            company: selectedCompany,
-            targetAudit: resolvedKey
-          } 
+          payload: payloadData
         },
         headers: {
           Authorization: `Bearer ${token}`
@@ -154,6 +167,27 @@ export default function Dashboard() {
 
       setExecutionResult(data);
       showNotification(`${resolvedKey} executed successfully!`);
+
+      if (data && data.success) {
+        // Instant Optimistic State Update
+        const newLogEntry = data.logEntry || {
+          id: `opt-${Date.now()}`,
+          claw_id: resolvedKey,
+          task_name: `${resolvedKey.replace('-claw', '').toUpperCase()} Manual Run`,
+          status: 'Success',
+          accuracy_score: 100,
+          created_at: new Date().toISOString()
+        };
+
+        setDbLogs((prev) => [newLogEntry, ...prev.filter((l) => l.id !== newLogEntry.id)]);
+
+        // Open Modal Window
+        setActiveModalData({
+          clawKey: data.clawKey || resolvedKey,
+          data: data.result || data
+        });
+        setModalOpen(true);
+      }
     } catch (err) {
       console.error(`Execution error for ${clawIdentifier}:`, err);
       setExecutionResult({ error: err.message });
@@ -163,11 +197,11 @@ export default function Dashboard() {
     }
   };
 
-  // Invoke Supabase Edge Function for manual override test banner
+  // Invoke Supabase Edge Function for bookkeeper-claw test run
   const handleExecuteClawAI = () => {
     handleTriggerAgent(
-      'controller-claw', 
-      'You are an expert Corporate Controller and Autonomous CFO. Provide a precise JSON response detailing financial audit insights, compliance checks, and risk analysis.'
+      'bookkeeper-claw', 
+      'You are an expert Bookkeeper AI. Reconcile transactions and process vendor bill INV-8890. Return JSON containing "requires_ap_matching": true.'
     );
   };
 
@@ -304,17 +338,26 @@ export default function Dashboard() {
               )}
             </div>
 
-            <OverviewView 
-              selectedCompany={selectedCompany}
-              hideMetrics={hideMetrics}
-              handleTriggerAgent={handleTriggerAgent}
-              clawsList={clawsList}
-              toggleClawStatus={toggleClawStatus}
-              logFilter={logFilter}
-              setLogFilter={setLogFilter}
-              filteredLogs={filteredLogs}
-              isLoadingLogs={isLogsLoading}
-            />
+            {/* Overview Main Content Area */}
+            <div className="p-6 space-y-6">
+              <OverviewView 
+                selectedCompany={selectedCompany}
+                hideMetrics={hideMetrics}
+                handleTriggerAgent={handleTriggerAgent}
+                clawsList={clawsList}
+                toggleClawStatus={toggleClawStatus}
+                logFilter={logFilter}
+                setLogFilter={setLogFilter}
+                filteredLogs={filteredLogs}
+                isLoadingLogs={isLogsLoading}
+                showNotification={showNotification}
+              />
+
+              {/* Standalone Real-time Log Stream Feed */}
+              <div className="mt-6">
+                <ClawExecutionLogs />
+              </div>
+            </div>
           </div>
         )}
 
@@ -352,6 +395,13 @@ export default function Dashboard() {
         onUploadSuccess={(file) => {
           showNotification(`Successfully ingested ${file.name} for AI claw processing!`);
         }}
+      />
+
+      <AgentResultModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        clawKey={activeModalData?.clawKey || ''}
+        data={activeModalData?.data}
       />
 
     </div>
