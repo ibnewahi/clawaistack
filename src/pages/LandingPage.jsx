@@ -7,6 +7,7 @@ import {
   Mail,
   FileBarChart,
   ShieldCheck,
+  Building2,
   ArrowRight,
   Check,
   Zap,
@@ -18,6 +19,11 @@ const features = [
     name: 'CFO Claw',
     description: 'Strategic cash forecasting, runway analysis, and executive alerts.',
     icon: Sparkles,
+  },
+  {
+    name: 'AP Claw',
+    description: 'Automated vendor bill ingestion, 3-way matching, and scheduled payouts.',
+    icon: Building2,
   },
   {
     name: 'AR Collector Claw',
@@ -39,20 +45,20 @@ const features = [
 const plans = [
   {
     name: 'Starter',
-    price: 29,
+    price: 49,
     description: 'Perfect for solo founders getting started with AI finance.',
-    features: ['1 AI Claw', 'Basic reporting', 'Email insights', '7-day history'],
+    features: ['2 AI Claws', 'Standard reconciliation', 'Basic cash alerts', '30-day history'],
     cta: 'Get Started',
     highlighted: false,
   },
   {
     name: 'Business',
-    price: 99,
+    price: 149,
     description: 'For growing teams that need automated financial ops.',
     features: [
-      '3 AI Claws',
+      'All 5 AI Claws',
       'Automated email actions',
-      'API integrations',
+      'API & Accounting integrations',
       '90-day history',
       'Priority support',
     ],
@@ -61,14 +67,14 @@ const plans = [
   },
   {
     name: 'CFO Tier',
-    price: 249,
+    price: 399,
     description: 'Enterprise-grade finance automation with full control.',
     features: [
-      'All AI Claws',
-      'Custom workflows',
+      'Unlimited AI Claws',
+      'Custom multi-agent workflows',
       'Dedicated support',
       'Unlimited history',
-      'SSO & audit exports',
+      'SSO & audit-ready exports',
     ],
     cta: 'Contact Sales',
     highlighted: false,
@@ -143,7 +149,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-zinc-400 sm:text-xl">
-            Deploy dedicated AI Claws for Cash-Flow Forecasting, Bookkeeping QA,
+            Deploy dedicated AI Claws for Cash-Flow Forecasting, Vendor Bills, Bookkeeping QA,
             and Automated AR Collections.
           </p>
 
@@ -174,11 +180,11 @@ export default function LandingPage() {
               Core AI Claws
             </p>
             <h2 className="mt-3 text-3xl font-bold text-white sm:text-4xl">
-              Four specialists. One finance stack.
+              Five specialists. One finance stack.
             </h2>
           </div>
 
-          <div className="mt-14 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-14 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {features.map((feature) => (
               <div
                 key={feature.name}

@@ -4,7 +4,6 @@ import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import FileIngestion from '../components/FileIngestion';
 import { AgentResultModal } from '../components/AgentResultModal';
-import { ClawExecutionLogs } from '../components/ClawExecutionLogs';
 
 // Shared Supabase Client Import
 import { supabase } from '../lib/supabase';
@@ -352,11 +351,6 @@ export default function Dashboard() {
                 isLoadingLogs={isLogsLoading}
                 showNotification={showNotification}
               />
-
-              {/* Standalone Real-time Log Stream Feed */}
-              <div className="mt-6">
-                <ClawExecutionLogs />
-              </div>
             </div>
           </div>
         )}

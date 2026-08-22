@@ -9,8 +9,13 @@ import {
   Check,
   Building2,
   Sparkles,
-  Plus
+  Plus,
+  User,
+  Save,
+  X,
+  ExternalLink
 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 export default function Header({ 
   selectedCompany, 
@@ -23,15 +28,77 @@ export default function Header({
 }) {
   const [isCompanyMenuOpen, setIsCompanyMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  // User Profile State
+  const [userProfile, setUserProfile] = useState({
+    name: 'Misbahullah',
+    email: 'misbah312@gmail.com',
+    role: 'Fractional CFO / Consultant'
+  });
 
   const companyMenuRef = useRef(null);
   const notificationsMenuRef = useRef(null);
+  const profileMenuRef = useRef(null);
 
-  // Notification State
+  // Fetch logged-in user details and custom profile attributes on mount
+  useEffect(() => {
+    async function getUserData() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('full_name, role')
+            .eq('id', user.id)
+            .single();
+
+          setUserProfile({
+            name: profileData?.full_name || user.user_metadata?.full_name || 'Misbahullah',
+            email: user.email || 'misbah312@gmail.com',
+            role: profileData?.role || 'Fractional CFO / Consultant'
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching user profile:', err);
+      }
+    }
+    getUserData();
+  }, []);
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    setIsSavingProfile(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Update user metadata in Supabase Auth
+        await supabase.auth.updateUser({
+          data: { full_name: userProfile.name }
+        });
+
+        // Upsert custom profile attributes into public.profiles table
+        await supabase.from('profiles').upsert({
+          id: user.id,
+          full_name: userProfile.name,
+          role: userProfile.role,
+          updated_at: new Date().toISOString()
+        });
+      }
+      setIsProfileMenuOpen(false);
+    } catch (err) {
+      console.error('Error updating profile:', err.message);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  // Notification State with navigation links
   const [notifications, setNotifications] = useState([
-    { id: 1, title: 'Reconciliation Complete', desc: '14 Stripe transactions reconciled automatically.', time: '2m ago', unread: true },
-    { id: 2, title: 'AR Follow-up Sent', desc: 'Overdue reminder sent to ACME Corp.', time: '15m ago', unread: true },
-    { id: 3, title: '3-Way Match Verified', desc: 'Vendor Bill #V-8812 approved for payout.', time: '1h ago', unread: false },
+    { id: 1, title: 'Reconciliation Complete', desc: '14 Stripe transactions reconciled automatically.', time: '2m ago', unread: true, link: '/dashboard/reconciliation' },
+    { id: 2, title: 'AR Follow-up Sent', desc: 'Overdue reminder sent to ACME Corp.', time: '15m ago', unread: true, link: '/dashboard/ar' },
+    { id: 3, title: '3-Way Match Verified', desc: 'Vendor Bill #V-8812 approved for payout.', time: '1h ago', unread: false, link: '/dashboard/bills' },
   ]);
 
   const companies = [
@@ -48,6 +115,9 @@ export default function Header({
       }
       if (notificationsMenuRef.current && !notificationsMenuRef.current.contains(event.target)) {
         setIsNotificationsOpen(false);
+      }
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
+        setIsProfileMenuOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -73,6 +143,7 @@ export default function Header({
             onClick={() => {
               setIsCompanyMenuOpen(prev => !prev);
               setIsNotificationsOpen(false);
+              setIsProfileMenuOpen(false);
             }}
             className="flex items-center gap-2 px-3 py-1.5 bg-[#13151b] border border-zinc-800 rounded-lg text-xs font-medium text-white hover:border-zinc-700 transition cursor-pointer"
           >
@@ -187,6 +258,7 @@ export default function Header({
             onClick={() => {
               setIsNotificationsOpen(prev => !prev);
               setIsCompanyMenuOpen(false);
+              setIsProfileMenuOpen(false);
             }}
             className="p-2 text-zinc-400 hover:text-white hover:bg-[#13151b] rounded-lg transition relative cursor-pointer"
           >
@@ -220,7 +292,7 @@ export default function Header({
                 )}
               </div>
 
-              {/* Notification Items */}
+              {/* Notification Items with Links */}
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {notifications.map((item) => (
                   <div 
@@ -236,6 +308,18 @@ export default function Header({
                       <span className="text-[9px] text-zinc-500 font-mono">{item.time}</span>
                     </div>
                     <p className="text-[11px] text-zinc-400 mt-1 leading-snug">{item.desc}</p>
+                    
+                    {/* Action link for each notification */}
+                    <div className="mt-2 pt-2 border-t border-zinc-800/60 flex justify-end">
+                      <a 
+                        href={item.link}
+                        onClick={() => setIsNotificationsOpen(false)}
+                        className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 hover:text-emerald-300 transition"
+                      >
+                        <span>View details</span>
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -249,6 +333,94 @@ export default function Header({
                   Close
                 </button>
               </div>
+            </div>
+          )}
+        </div>
+
+        <div className="h-4 w-px bg-zinc-800 mx-1"></div>
+
+        {/* User Profile Dropdown Menu */}
+        <div className="relative" ref={profileMenuRef}>
+          <button 
+            type="button"
+            onClick={() => {
+              setIsProfileMenuOpen(prev => !prev);
+              setIsCompanyMenuOpen(false);
+              setIsNotificationsOpen(false);
+            }}
+            className="flex items-center gap-2.5 bg-[#13151b] border border-zinc-800 hover:border-zinc-700 px-3 py-1.5 rounded-xl cursor-pointer transition-all"
+          >
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold text-xs">
+              {userProfile.name ? userProfile.name.charAt(0).toUpperCase() : 'U'}
+            </div>
+            <div className="text-left hidden md:block">
+              <p className="text-xs font-semibold text-white leading-none">{userProfile.name}</p>
+              <p className="text-[10px] text-zinc-400 mt-0.5 leading-none">{userProfile.role}</p>
+            </div>
+            <ChevronDown className={`h-3.5 w-3.5 text-zinc-500 ml-1 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Profile Dropdown Panel */}
+          {isProfileMenuOpen && (
+            <div className="absolute right-0 mt-2 w-72 bg-[#13151b] border border-zinc-800 rounded-2xl shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-emerald-400" />
+                  <span className="text-xs font-bold text-white">User Profile Settings</span>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setIsProfileMenuOpen(false)}
+                  className="text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveProfile} className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-medium text-[11px]">Full Name</label>
+                  <input 
+                    type="text" 
+                    value={userProfile.name}
+                    onChange={(e) => setUserProfile({...userProfile, name: e.target.value})}
+                    className="w-full bg-[#090a0f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:border-emerald-500 outline-none"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-medium text-[11px]">Email Address</label>
+                  <input 
+                    type="email" 
+                    value={userProfile.email}
+                    disabled
+                    className="w-full bg-[#090a0f]/50 border border-zinc-800/50 rounded-xl px-3 py-2 text-zinc-500 cursor-not-allowed"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-medium text-[11px]">Professional Title / Role</label>
+                  <input 
+                    type="text" 
+                    value={userProfile.role}
+                    onChange={(e) => setUserProfile({...userProfile, role: e.target.value})}
+                    className="w-full bg-[#090a0f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:border-emerald-500 outline-none"
+                    placeholder="e.g. Fractional CFO / Consultant"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+                  <button 
+                    type="submit"
+                    disabled={isSavingProfile}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:bg-emerald-500/50 text-zinc-950 font-semibold rounded-xl cursor-pointer transition-all"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    {isSavingProfile ? 'Saving...' : 'Save Profile'}
+                  </button>
+                </div>
+              </form>
             </div>
           )}
         </div>

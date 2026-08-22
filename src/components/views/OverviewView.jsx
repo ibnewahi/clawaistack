@@ -1,3 +1,4 @@
+import AgentConsole from "../AgentConsole";
 import React, { useState, useEffect } from 'react';
 import { 
   TrendingUp, 
