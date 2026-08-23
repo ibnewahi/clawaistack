@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import LandingFooter from '../components/landing/LandingFooter';
 import RoiCalculator from '../components/landing/RoiCalculator';
+import AgentTerminal from '../components/landing/AgentTerminal';
 
 const miniChartData = [
   { month: 'Jan', cash: 140 },
@@ -372,6 +373,9 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* Live AI Agent Terminal Section */}
+      <AgentTerminal />
 
       {/* Embedded ROI Calculator Component */}
       <RoiCalculator />
