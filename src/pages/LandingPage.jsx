@@ -20,6 +20,7 @@ import {
 import LandingFooter from '../components/landing/LandingFooter';
 import RoiCalculator from '../components/landing/RoiCalculator';
 import AgentTerminal from '../components/landing/AgentTerminal';
+import Testimonials from '../components/landing/Testimonials';
 
 const miniChartData = [
   { month: 'Jan', cash: 140 },
@@ -379,6 +380,9 @@ export default function LandingPage() {
 
       {/* Embedded ROI Calculator Component */}
       <RoiCalculator />
+
+      {/* Social Proof / Testimonials Section */}
+      <Testimonials />
 
       {/* Pricing Section */}
       <section id="pricing" className="relative z-10 border-t border-zinc-800/80 px-6 py-24">
