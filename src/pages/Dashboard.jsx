@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Zap, Play, Loader2 } from 'lucide-react';
+import { Zap } from 'lucide-react';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import FileIngestion from '../components/FileIngestion';
@@ -92,7 +92,6 @@ export default function Dashboard() {
         { event: 'INSERT', schema: 'public', table: 'claw_execution_logs' },
         (payload) => {
           setDbLogs((prev) => {
-            // Check if log already exists from optimistic UI insert
             if (prev.some((log) => log.id === payload.new.id)) return prev;
             return [payload.new, ...prev.slice(0, 19)];
           });
@@ -138,7 +137,6 @@ export default function Dashboard() {
 
       const resolvedKey = clawIdentifier.includes('-claw') ? clawIdentifier : `${clawIdentifier.toLowerCase()}-claw`;
 
-      // Payload explicitly configured with test invoice data to trigger downstream agents
       const payloadData = {
         triggerSource: 'Manual Agent UI Trigger',
         company: selectedCompany,
@@ -168,7 +166,6 @@ export default function Dashboard() {
       showNotification(`${resolvedKey} executed successfully!`);
 
       if (data && data.success) {
-        // Instant Optimistic State Update
         const newLogEntry = data.logEntry || {
           id: `opt-${Date.now()}`,
           claw_id: resolvedKey,
@@ -180,7 +177,6 @@ export default function Dashboard() {
 
         setDbLogs((prev) => [newLogEntry, ...prev.filter((l) => l.id !== newLogEntry.id)]);
 
-        // Open Modal Window
         setActiveModalData({
           clawKey: data.clawKey || resolvedKey,
           data: data.result || data
@@ -223,7 +219,6 @@ export default function Dashboard() {
     }));
   };
 
-  // Fallback mock dataset used if database table is empty
   const fallbackLogs = [
     { id: '1', claw_id: 'bookkeeper-claw', task_name: 'Bank Feed Reconciliation', status: 'Success', accuracy_score: 100, created_at: new Date().toISOString() },
     { id: '2', claw_id: 'ar-collector-claw', task_name: 'Automated Follow-up Email Sent', status: 'Success', accuracy_score: 100, created_at: new Date(Date.now() - 14 * 60000).toISOString() },
@@ -232,7 +227,6 @@ export default function Dashboard() {
     { id: '5', claw_id: 'controller-claw', task_name: 'Anomaly Detection Audit Completed', status: 'Success', accuracy_score: 100, created_at: new Date(Date.now() - 12 * 60000).toISOString() },
   ];
 
-  // Map database entries to UI properties
   const activeLogSource = dbLogs.length > 0 ? dbLogs : fallbackLogs;
 
   const mappedLogs = activeLogSource.map((log) => ({
@@ -259,11 +253,18 @@ export default function Dashboard() {
         setActiveTab={setActiveTab} 
         collapsed={collapsed} 
         setCollapsed={setCollapsed} 
-        onSignOut={() => {
+        onSignOut={async () => {
           showNotification('Signing out...');
+          localStorage.removeItem('clawai_auth');
+          try {
+            await supabase.auth.signOut();
+          } catch (err) {
+            console.error('Error signing out from Supabase:', err);
+          }
+          
           setTimeout(() => {
-            window.location.href = '/';
-          }, 800);
+            window.location.href = '/auth';
+          }, 600);
         }}
       />
 
@@ -277,6 +278,8 @@ export default function Dashboard() {
           onSync={handleSyncLedger}
           isSyncing={isSyncing}
           onOpenUpload={() => setIsUploadOpen(true)}
+          onExecuteClawTest={handleExecuteClawAI}
+          isExecutingTest={isExecutingClaw}
         />
 
         {notificationMessage && (
@@ -289,54 +292,6 @@ export default function Dashboard() {
         {/* Tab View Orchestrator */}
         {activeTab === 'Dashboard' && (
           <div className="flex-1 flex flex-col">
-            {/* Edge Function Test Trigger Banner */}
-            <div className="px-6 pt-6">
-              <div className="bg-[#12141c] border border-zinc-800 rounded-2xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
-                <div>
-                  <div className="flex items-center gap-2 text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-1">
-                    <Zap className="h-3.5 w-3.5" /> Supabase Edge Gateway
-                  </div>
-                  <h3 className="text-base font-semibold text-white">Execute-Claw Runtime Test</h3>
-                  <p className="text-xs text-zinc-400 mt-0.5">Trigger live backend audit tasks via your serverless edge integration.</p>
-                </div>
-                <button
-                  onClick={handleExecuteClawAI}
-                  disabled={isExecutingClaw}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-500/50 text-zinc-950 font-semibold text-xs rounded-xl transition-all shadow-lg shadow-emerald-500/10 cursor-pointer"
-                >
-                  {isExecutingClaw ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Executing Pipeline...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-4 w-4 fill-zinc-950" />
-                      Test Execute-Claw
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Execution Result Box */}
-              {executionResult && (
-                <div className="mt-4 bg-[#0d0e14] border border-zinc-800 rounded-2xl p-4 text-xs font-mono">
-                  <div className="flex items-center justify-between mb-2 pb-2 border-b border-zinc-800 text-zinc-400">
-                    <span>Response Payload</span>
-                    <button 
-                      onClick={() => setExecutionResult(null)} 
-                      className="text-zinc-500 hover:text-zinc-300 cursor-pointer"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                  <pre className="text-emerald-400 whitespace-pre-wrap overflow-x-auto max-h-48">
-                    {JSON.stringify(executionResult, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
-
             {/* Overview Main Content Area */}
             <div className="p-6 space-y-6">
               <OverviewView 

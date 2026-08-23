@@ -13,7 +13,8 @@ import {
   User,
   Save,
   X,
-  ExternalLink
+  ExternalLink,
+  Zap
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -24,7 +25,9 @@ export default function Header({
   onHideMetricsToggle, 
   onSync, 
   isSyncing, 
-  onOpenUpload 
+  onOpenUpload,
+  onExecuteClawTest,
+  isExecutingTest
 }) {
   const [isCompanyMenuOpen, setIsCompanyMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -200,19 +203,22 @@ export default function Header({
           )}
         </div>
 
-        {/* Global Search Bar */}
+        {/* Global Search Bar with Styled KBD Badge */}
         <div className="relative flex-1 hidden md:block">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
           <input 
             type="text" 
-            placeholder="Search transactions, claws, invoices... (⌘K)" 
-            className="w-full bg-[#13151b] border border-zinc-800 rounded-lg pl-9 pr-4 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 transition"
+            placeholder="Search transactions, claws, invoices..." 
+            className="w-full bg-[#13151b] border border-zinc-800 rounded-lg pl-9 pr-12 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 transition"
           />
+          <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 bg-zinc-800/80 border border-zinc-700/60 rounded pointer-events-none">
+            ⌘K
+          </kbd>
         </div>
       </div>
 
       {/* Header Action Buttons */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
         
         {/* KPI Compact Toggle */}
         <button 
@@ -239,13 +245,25 @@ export default function Header({
           <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync'}</span>
         </button>
 
+        {/* Test Execute-Claw Button */}
+        <button 
+          type="button"
+          onClick={onExecuteClawTest}
+          disabled={isExecutingTest}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/20 active:scale-95 transition cursor-pointer disabled:opacity-50"
+          title="Trigger Supabase Edge Gateway Test"
+        >
+          <Zap className={`h-3.5 w-3.5 fill-emerald-400/20 ${isExecutingTest ? 'animate-bounce' : ''}`} />
+          <span>{isExecutingTest ? 'Running...' : 'Test Execute-Claw'}</span>
+        </button>
+
         {/* Upload Button */}
         <button 
           type="button"
           onClick={onOpenUpload}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs rounded-lg transition shadow-lg shadow-emerald-500/10 cursor-pointer"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs rounded-lg transition shadow-sm shadow-emerald-950/50 cursor-pointer"
         >
-          <Upload className="h-3.5 w-3.5" />
+          <Upload className="h-3.5 w-3.5 text-zinc-950" />
           <span>Upload</span>
         </button>
 
@@ -309,7 +327,6 @@ export default function Header({
                     </div>
                     <p className="text-[11px] text-zinc-400 mt-1 leading-snug">{item.desc}</p>
                     
-                    {/* Action link for each notification */}
                     <div className="mt-2 pt-2 border-t border-zinc-800/60 flex justify-end">
                       <a 
                         href={item.link}

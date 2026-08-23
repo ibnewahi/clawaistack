@@ -11,7 +11,7 @@ export default function Sidebar({ activeTab, setActiveTab, collapsed, setCollaps
   ];
 
   return (
-    <aside className={`border-r border-zinc-800/80 bg-[#13151b] flex flex-col justify-between transition-all duration-300 ${collapsed ? 'w-20' : 'w-64'}`}>
+    <aside className={`border-r border-zinc-800/80 bg-[#13151b] flex flex-col justify-between transition-all duration-300 relative ${collapsed ? 'w-20' : 'w-64'}`}>
       <div>
         {/* Brand Header with Clean Icon & Name Lockup */}
         <div className="flex items-center justify-between px-5 py-6 border-b border-zinc-800/80">
@@ -44,19 +44,25 @@ export default function Sidebar({ activeTab, setActiveTab, collapsed, setCollaps
             const Icon = item.icon;
             const isActive = activeTab === item.name;
             return (
-              <button
-                key={item.name}
-                onClick={() => setActiveTab(item.name)}
-                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-medium transition cursor-pointer ${
-                  isActive
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
-                }`}
-                title={collapsed ? item.name : undefined}
-              >
-                <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-emerald-400' : 'text-zinc-400'}`} />
-                {!collapsed && <span className="truncate">{item.name}</span>}
-              </button>
+              <div key={item.name} className="relative flex items-center">
+                {/* Active Left Indicator Bar */}
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-emerald-400 rounded-r-full shadow-sm shadow-emerald-400/50 z-10" />
+                )}
+                
+                <button
+                  onClick={() => setActiveTab(item.name)}
+                  className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-medium transition cursor-pointer ${
+                    isActive
+                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
+                  }`}
+                  title={collapsed ? item.name : undefined}
+                >
+                  <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-emerald-400' : 'text-zinc-400'}`} />
+                  {!collapsed && <span className="truncate">{item.name}</span>}
+                </button>
+              </div>
             );
           })}
         </nav>
