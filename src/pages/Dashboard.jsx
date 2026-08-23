@@ -14,6 +14,8 @@ import ClawsView from '../components/views/ClawsView';
 import IntegrationsView from '../components/views/IntegrationsView';
 import ReportsView from '../components/views/ReportsView';
 import SettingsView from '../components/views/SettingsView';
+import ReviewQueue from '../components/views/ReviewQueue';
+import AuditLogsView from '../components/views/AuditLogsView';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('Dashboard');
@@ -306,6 +308,9 @@ export default function Dashboard() {
                 isLoadingLogs={isLogsLoading}
                 showNotification={showNotification}
               />
+              
+              {/* Human-in-the-Loop Review Queue Component */}
+              <ReviewQueue />
             </div>
           </div>
         )}
@@ -326,6 +331,10 @@ export default function Dashboard() {
 
         {activeTab === 'Reports' && (
           <ReportsView showNotification={showNotification} />
+        )}
+
+        {activeTab === 'Audit Logs' && (
+          <AuditLogsView />
         )}
 
         {activeTab === 'Settings' && (

@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Bot, Cpu, FileText, Settings, LogOut, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
+import { LayoutDashboard, Bot, Cpu, FileText, ShieldCheck, Settings, LogOut, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
 
 export default function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, onSignOut }) {
   const navItems = [
@@ -7,6 +7,7 @@ export default function Sidebar({ activeTab, setActiveTab, collapsed, setCollaps
     { name: 'AI Claws', icon: Bot },
     { name: 'Integrations', icon: Cpu },
     { name: 'Reports', icon: FileText },
+    { name: 'Audit Logs', icon: ShieldCheck },
     { name: 'Settings', icon: Settings },
   ];
 

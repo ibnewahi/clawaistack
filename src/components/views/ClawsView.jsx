@@ -1,6 +1,7 @@
 import React from 'react';
 import { Cpu, Zap, Play, Pause, Plus, Lock, ChevronRight, Sparkles } from 'lucide-react';
 import { compileClawPayload, executeClawFunction } from "../../lib/sopEngine";
+import { runAgentAutonomousTask } from "../../lib/agentDispatcher";
 
 const TIER_LEVELS = {
   Starter: 1,
@@ -55,11 +56,19 @@ export default function ClawsView({
       const result = await executeClawFunction(payload);
       console.log(`[Edge Function Response - ${clawKey}]:`, result);
 
+      // 3. Automatically record execution to your immutable audit log trail
+      await runAgentAutonomousTask({
+        agentName: clawName,
+        taskType: `Manual Override Execution (${clawKey})`,
+        payload: { company: selectedCompany, response: result },
+        confidenceScore: 0.98
+      });
+
       if (showNotification) {
-        showNotification(`Successfully executed ${clawName}!`);
+        showNotification(`Successfully executed & logged ${clawName}!`);
       }
 
-      // 3. Notify parent workspace or callback handler if defined
+      // 4. Notify parent workspace or callback handler if defined
       if (handleTriggerAgent) {
         handleTriggerAgent(clawName, result);
       }
