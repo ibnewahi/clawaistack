@@ -21,6 +21,7 @@ import LandingFooter from '../components/landing/LandingFooter';
 import RoiCalculator from '../components/landing/RoiCalculator';
 import AgentTerminal from '../components/landing/AgentTerminal';
 import Testimonials from '../components/landing/Testimonials';
+import FAQ from '../components/landing/FAQ';
 
 const miniChartData = [
   { month: 'Jan', cash: 140 },
@@ -438,6 +439,9 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* FAQ Section */}
+      <FAQ />
 
       <LandingFooter />
       <LeadModal isOpen={isDemoModalOpen} onClose={() => setIsDemoModalOpen(false)} />
