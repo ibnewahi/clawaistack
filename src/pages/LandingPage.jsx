@@ -15,13 +15,10 @@ import {
   Activity,
   CheckCircle2,
   Terminal,
-  Calculator,
-  Layers,
-  TrendingUp,
-  Clock,
-  DollarSign
+  Layers
 } from 'lucide-react';
 import LandingFooter from '../components/landing/LandingFooter';
+import RoiCalculator from '../components/landing/RoiCalculator';
 
 const miniChartData = [
   { month: 'Jan', cash: 140 },
@@ -113,12 +110,7 @@ const plans = [
 
 export default function LandingPage() {
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
-  const [invoiceVolume, setInvoiceVolume] = useState(150);
   const navigate = useNavigate();
-
-  // Calculations for interactive ROI calculator
-  const hoursSaved = Math.round(invoiceVolume * 0.25);
-  const costSavings = Math.round(hoursSaved * 45);
 
   return (
     <div className="min-h-screen bg-[#090a0f] text-zinc-100 font-sans selection:bg-emerald-500/30 overflow-x-hidden">
@@ -381,59 +373,8 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Interactive ROI Calculator */}
-      <section id="roi-calculator" className="border-t border-zinc-800/80 px-6 py-24 bg-[#0c0e14]">
-        <div className="mx-auto max-w-4xl rounded-2xl border border-zinc-800 bg-[#13151b] p-8 sm:p-10 shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
-          
-          <div className="text-center max-w-xl mx-auto">
-            <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 mb-3">
-              <Calculator className="h-3.5 w-3.5" /> ROI Calculator
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-white">Calculate your monthly time & cost savings</h2>
-          </div>
-
-          <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-            {/* Slider Control */}
-            <div className="space-y-4">
-              <div className="flex justify-between items-center text-sm">
-                <span className="font-semibold text-zinc-300">Monthly Transactions / Invoices</span>
-                <span className="font-mono text-emerald-400 font-bold text-base">{invoiceVolume} / mo</span>
-              </div>
-              <input 
-                type="range" 
-                min="20" 
-                max="500" 
-                step="10" 
-                value={invoiceVolume} 
-                onChange={(e) => setInvoiceVolume(Number(e.target.value))}
-                className="w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-              />
-              <div className="flex justify-between text-[10px] text-zinc-500 font-mono">
-                <span>20 txns</span>
-                <span>250 txns</span>
-                <span>500 txns</span>
-              </div>
-            </div>
-
-            {/* Savings Output Cards */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 rounded-xl bg-[#090a0f] border border-zinc-800 text-center">
-                <Clock className="h-5 w-5 text-emerald-400 mx-auto mb-1" />
-                <span className="text-[10px] text-zinc-400 uppercase font-semibold block">Time Saved</span>
-                <span className="text-2xl font-bold text-white font-mono">{hoursSaved} hrs</span>
-                <span className="text-[10px] text-zinc-500 block">per month</span>
-              </div>
-              <div className="p-4 rounded-xl bg-[#090a0f] border border-zinc-800 text-center">
-                <DollarSign className="h-5 w-5 text-emerald-400 mx-auto mb-1" />
-                <span className="text-[10px] text-zinc-400 uppercase font-semibold block">Est. Cost Saved</span>
-                <span className="text-2xl font-bold text-emerald-400 font-mono">${costSavings}</span>
-                <span className="text-[10px] text-zinc-500 block">per month</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* Embedded ROI Calculator Component */}
+      <RoiCalculator />
 
       {/* Pricing Section */}
       <section id="pricing" className="relative z-10 border-t border-zinc-800/80 px-6 py-24">
