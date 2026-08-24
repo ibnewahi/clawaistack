@@ -43,9 +43,9 @@ export default function Sidebar({ collapsed, setCollapsed, onSignOut }) {
   return (
     <aside className={`border-r border-zinc-800/80 bg-[#13151b] flex flex-col justify-between transition-all duration-300 relative ${collapsed ? 'w-20' : 'w-64'}`}>
       <div>
-        {/* Brand Header: Logo and Name now route to the Main Landing Page (to="/") */}
+        {/* Brand Header: Logo and Name now route to the Dashboard (to="/dashboard") */}
         <div className="flex items-center justify-between px-5 py-6 border-b border-zinc-800/80">
-          <Link to="/" className="flex items-center gap-3 overflow-hidden group cursor-pointer">
+          <Link to="/dashboard" className="flex items-center gap-3 overflow-hidden group cursor-pointer">
             <div className="h-9 w-9 shrink-0 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/10 group-hover:border-emerald-500/60 transition">
               <Zap className="h-5 w-5 fill-emerald-400/20" />
             </div>
