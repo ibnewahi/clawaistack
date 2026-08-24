@@ -10,8 +10,9 @@ function PrivacyPolicyModal({ isOpen, onClose }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
       <div className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl border border-zinc-800 bg-[#13151b] p-6 sm:p-8 text-zinc-300 shadow-2xl">
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-6 right-6 text-zinc-400 hover:text-white transition"
+          className="absolute top-6 right-6 text-zinc-400 hover:text-white transition cursor-pointer"
         >
           <X className="h-5 w-5" />
         </button>
@@ -23,35 +24,36 @@ function PrivacyPolicyModal({ isOpen, onClose }) {
 
         <div className="space-y-4 text-sm leading-relaxed text-zinc-400">
           <p>
-            <strong className="text-zinc-200">Effective Date:</strong> January 1, 2026
+            <strong className="text-zinc-200">Effective Date:</strong> January 1, 2026[cite: 1]
           </p>
           <p>
-            At ClawAI Stack, we take your financial data privacy seriously. This Privacy Policy outlines how we collect, process, and protect client ledger data, payment credentials, and system metrics.
+            At ClawAI Stack, we take your financial data privacy seriously. This Privacy Policy outlines how we collect, process, and protect client ledger data, payment credentials, and system metrics[cite: 1].
           </p>
 
           <h3 className="text-base font-semibold text-white pt-2">1. Information Collection & Usage</h3>
           <p>
-            We collect financial metadata, bank transaction read-outs, and enterprise integration keys strictly to execute authorized AI operations such as AR collection, bill matching, and runway modeling.
+            We collect financial metadata, bank transaction read-outs, and enterprise integration keys strictly to execute authorized AI operations such as AR collection, bill matching, and runway modeling[cite: 1].
           </p>
 
           <h3 className="text-base font-semibold text-white pt-2">2. Data Isolation & Security</h3>
           <p>
-            Client data is never pooled or used to train public machine learning models. All ledger inputs are processed in isolated operational containers protected by 256-bit AES encryption at rest and TLS 1.3 in transit.
+            Client data is never pooled or used to train public machine learning models. All ledger inputs are processed in isolated operational containers protected by 256-bit AES encryption at rest and TLS 1.3 in transit[cite: 1].
           </p>
 
           <h3 className="text-base font-semibold text-white pt-2">3. Third-Party Integrations</h3>
           <p>
-            OAuth access tokens granted to ClawAI Stack for accounting software are encrypted at the hardware security layer (HSM) and can be revoked by the user at any time.
+            OAuth access tokens granted to ClawAI Stack for accounting software are encrypted at the hardware security layer (HSM) and can be revoked by the user at any time[cite: 1].
           </p>
 
           <h3 className="text-base font-semibold text-white pt-2">4. Your Data Rights</h3>
           <p>
-            You retain 100% ownership of your financial records. You may request a complete export or immediate purge of all stored audit logs by submitting a request to legal@clawaistack.com.
+            You retain 100% ownership of your financial records. You may request a complete export or immediate purge of all stored audit logs by submitting a request to legal@clawaistack.com[cite: 1].
           </p>
         </div>
 
         <div className="mt-8 pt-4 border-t border-zinc-800 flex justify-end">
           <button
+            type="button"
             onClick={onClose}
             className="px-5 py-2 rounded-xl bg-zinc-800 text-white font-medium hover:bg-zinc-700 transition text-sm cursor-pointer"
           >
@@ -69,8 +71,9 @@ function TermsOfServiceModal({ isOpen, onClose }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
       <div className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl border border-zinc-800 bg-[#13151b] p-6 sm:p-8 text-zinc-300 shadow-2xl">
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-6 right-6 text-zinc-400 hover:text-white transition"
+          className="absolute top-6 right-6 text-zinc-400 hover:text-white transition cursor-pointer"
         >
           <X className="h-5 w-5" />
         </button>
@@ -82,35 +85,36 @@ function TermsOfServiceModal({ isOpen, onClose }) {
 
         <div className="space-y-4 text-sm leading-relaxed text-zinc-400">
           <p>
-            <strong className="text-zinc-200">Last Updated:</strong> March 2026
+            <strong className="text-zinc-200">Last Updated:</strong> March 2026[cite: 1]
           </p>
           <p>
-            By accessing or subscribing to ClawAI Stack, you agree to comply with the following terms governing our autonomous finance operations framework.
+            By accessing or subscribing to ClawAI Stack, you agree to comply with the following terms governing our autonomous finance operations framework[cite: 1].
           </p>
 
           <h3 className="text-base font-semibold text-white pt-2">1. Scope of AI Automation</h3>
           <p>
-            ClawAI Stack provides autonomous finance specialized agents ("Claws") designed for bookkeeping QA, cashflow forecasting, AP matching, and AR recovery. While AI Claws execute tasks automatically, final financial approvals remain under human supervision.
+            ClawAI Stack provides autonomous finance specialized agents ("Claws") designed for bookkeeping QA, cashflow forecasting, AP matching, and AR recovery. While AI Claws execute tasks automatically, final financial approvals remain under human supervision[cite: 1].
           </p>
 
           <h3 className="text-base font-semibold text-white pt-2">2. Subscription & Billing</h3>
           <p>
-            Plans (Starter, Business, CFO Tier) are billed monthly or annually in advance. Subscriptions auto-renew unless cancelled at least 24 hours prior to the billing cycle reset.
+            Plans (Starter, Business, CFO Tier) are billed monthly or annually in advance. Subscriptions auto-renew unless cancelled at least 24 hours prior to the billing cycle reset[cite: 1].
           </p>
 
           <h3 className="text-base font-semibold text-white pt-2">3. Acceptable Use</h3>
           <p>
-            You agree not to upload fraudulent accounting data, bypass audit safeguards, or attempt reverse engineering of underlying multi-agent routines.
+            You agree not to upload fraudulent accounting data, bypass audit safeguards, or attempt reverse engineering of underlying multi-agent routines[cite: 1].
           </p>
 
           <h3 className="text-base font-semibold text-white pt-2">4. Limitation of Liability</h3>
           <p>
-            ClawAI Stack is an operational software platform and does not replace certified public accountants (CPAs) or tax counsel. Liability is limited to the subscription amount paid in the preceding 12-month period.
+            ClawAI Stack is an operational software platform and does not replace certified public accountants (CPAs) or tax counsel. Liability is limited to the subscription amount paid in the preceding 12-month period[cite: 1].
           </p>
         </div>
 
         <div className="mt-8 pt-4 border-t border-zinc-800 flex justify-end">
           <button
+            type="button"
             onClick={onClose}
             className="px-5 py-2 rounded-xl bg-zinc-800 text-white font-medium hover:bg-zinc-700 transition text-sm cursor-pointer"
           >
@@ -128,8 +132,9 @@ function SecurityAuditModal({ isOpen, onClose }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
       <div className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl border border-zinc-800 bg-[#13151b] p-6 sm:p-8 text-zinc-300 shadow-2xl">
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-6 right-6 text-zinc-400 hover:text-white transition"
+          className="absolute top-6 right-6 text-zinc-400 hover:text-white transition cursor-pointer"
         >
           <X className="h-5 w-5" />
         </button>
@@ -142,27 +147,28 @@ function SecurityAuditModal({ isOpen, onClose }) {
         <div className="space-y-4 text-sm leading-relaxed text-zinc-400">
           <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-3 text-emerald-300 text-xs">
             <ShieldCheck className="h-5 w-5 shrink-0" />
-            SOC2 Type II Compliant Architecture • Immutable Ledger Logging Active
+            SOC2 Type II Compliant Architecture • Immutable Ledger Logging Active[cite: 1]
           </div>
 
           <h3 className="text-base font-semibold text-white pt-2">1. Continuous Immutable Audit Trails</h3>
           <p>
-            Every execution, automated email send, and reconciliation action performed by an AI Claw generates an append-only audit record tagged with cryptographic hashes.
+            Every execution, automated email send, and reconciliation action performed by an AI Claw generates an append-only audit record tagged with cryptographic hashes[cite: 1].
           </p>
 
           <h3 className="text-base font-semibold text-white pt-2">2. Zero-Trust Access Controls</h3>
           <p>
-            We implement strict Role-Based Access Control (RBAC) and optional Single Sign-On (SSO) with Multi-Factor Authentication (MFA) to prevent unauthorized entry into system workflows.
+            We implement strict Role-Based Access Control (RBAC) and optional Single Sign-On (SSO) with Multi-Factor Authentication (MFA) to prevent unauthorized entry into system workflows[cite: 1].
           </p>
 
           <h3 className="text-base font-semibold text-white pt-2">3. Encryption Standards</h3>
           <p>
-            All financial API payloads are protected via TLS 1.3 encryption in transit and AES-256 encryption at rest. Database secrets are rotated automatically every 30 days.
+            All financial API payloads are protected via TLS 1.3 encryption in transit and AES-256 encryption at rest. Database secrets are rotated automatically every 30 days[cite: 1].
           </p>
         </div>
 
         <div className="mt-8 pt-4 border-t border-zinc-800 flex justify-end">
           <button
+            type="button"
             onClick={onClose}
             className="px-5 py-2 rounded-xl bg-zinc-800 text-white font-medium hover:bg-zinc-700 transition text-sm cursor-pointer"
           >
@@ -210,16 +216,21 @@ export default function LandingFooter() {
       <div className="max-w-7xl mx-auto px-6 py-16">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-10">
           
-          {/* Brand Info */}
+          {/* Brand Info (Logo and Name wrapped inside Link to Main Landing Page with smooth scroll) */}
           <div className="md:col-span-2 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+            <Link 
+              to="/" 
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="inline-flex items-center gap-3 cursor-pointer group"
+            >
+              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/30 flex items-center justify-center text-emerald-400 group-hover:border-emerald-500/60 transition shadow-lg shadow-emerald-500/10">
                 <Zap className="h-4 w-4 fill-emerald-400/20" />
               </div>
-              <span className="text-lg font-extrabold text-white tracking-tight">
+              <span className="text-lg font-extrabold text-white tracking-tight group-hover:text-emerald-400 transition">
                 ClawAI <span className="text-emerald-400">Stack</span>
               </span>
-            </div>
+            </Link>
+            
             <p className="text-xs text-zinc-400 leading-relaxed max-w-sm">
               Autonomous AI agents engineered for cash-flow forecasting, vendor bill processing, bookkeeping QA, and automated AR collections.
             </p>

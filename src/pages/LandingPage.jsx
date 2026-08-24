@@ -77,7 +77,7 @@ const plans = [
     name: 'Starter',
     price: 49,
     description: 'Perfect for solo founders getting started with AI finance.',
-    features: ['2 AI Claws', 'Standard reconciliation', 'Basic cash alerts', '30-day history'],
+    features: ['Bookkeeper Claw', 'Standard reconciliation', 'Basic cash alerts', '30-day history'],
     cta: 'Get Started',
     highlighted: false,
   },
@@ -86,7 +86,7 @@ const plans = [
     price: 149,
     description: 'For growing teams that need automated financial ops.',
     features: [
-      'All 5 AI Claws',
+      'Bookkeeper, AR & AP Claws',
       'Automated email actions',
       'API & Accounting integrations',
       '90-day history',
@@ -100,7 +100,7 @@ const plans = [
     price: 399,
     description: 'Enterprise-grade finance automation with full control.',
     features: [
-      'Unlimited AI Claws',
+      'All 5 AI Claws (Includes CFO & Controller)',
       'Custom multi-agent workflows',
       'Dedicated support',
       'Unlimited history',
@@ -128,8 +128,9 @@ export default function LandingPage() {
       <nav className="sticky top-0 z-50 bg-[#090a0f]/85 backdrop-blur-xl border-b border-zinc-800/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/10">
+          {/* Clickable Top Logo */}
+          <Link to="/" className="flex items-center gap-3 cursor-pointer group">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/10 group-hover:border-emerald-500/60 transition">
               <Zap className="h-5 w-5 fill-emerald-400/20" />
             </div>
             <div className="flex flex-col">
@@ -140,7 +141,7 @@ export default function LandingPage() {
                 Finance AI
               </span>
             </div>
-          </div>
+          </Link>
 
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-zinc-300">
             <a href="#features" className="hover:text-emerald-400 transition">Features</a>

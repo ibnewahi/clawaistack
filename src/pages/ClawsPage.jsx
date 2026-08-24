@@ -1,199 +1,167 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
-import { Bot, Play, Pause, Loader2 } from 'lucide-react';
+import AIClawCard from '../components/AIClawCard';
+import { Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
+// Claws mapped with your exact tier logic and explicit feature badges
 const DEFAULT_CLAWS = [
   {
     id: 'bookkeeper-claw',
     name: 'Bookkeeper Claw',
-    role: 'Transaction Categorization & Reconciliation',
-    status: 'Active',
-    tasks_today: 0,
-    last_run: '5 hrs ago',
+    description: 'Transaction categorization and standard reconciliation workflows for solo operations.',
+    features: ['Transaction Categorization', 'Standard Reconciliation', 'Basic Cash Alerts', '30-Day Ledger History'],
+    status: 'active',
+    tasksToday: 0,
+    lastRun: '5 hrs ago',
+    requiredTier: 'Starter', // Available on Starter, Business, and CFO Tier
   },
   {
     id: 'ar-collector-claw',
     name: 'AR Collector Claw',
-    role: 'Automated Invoice Follow-ups & Collections',
-    status: 'Active',
-    tasks_today: 8,
-    last_run: '1 hr ago',
+    description: 'Automated invoice follow-ups and collections management for growing teams.',
+    features: ['Automated Email Actions', 'Invoice Follow-up Triggers', 'Collections Pipeline Tracking'],
+    status: 'active',
+    tasksToday: 8,
+    lastRun: '1 hr ago',
+    requiredTier: 'Business', // Unlocked on Business and CFO Tier
   },
   {
     id: 'ap-claw',
     name: 'AP Claw',
-    role: 'Vendor Bill Processing & 3-Way Matching',
-    status: 'Active',
-    tasks_today: 5,
-    last_run: '30 mins ago',
+    description: 'Vendor bill processing and 3-way matching synced with accounting integrations.',
+    features: ['Vendor Bill Processing', '3-Way Matching', 'API & Accounting Sync'],
+    status: 'active',
+    tasksToday: 5,
+    lastRun: '30 mins ago',
+    requiredTier: 'Business', // Unlocked on Business and CFO Tier
   },
   {
     id: 'cfo-claw',
     name: 'CFO Claw',
-    role: 'Financial Forecasting & Runway Insights',
-    status: 'Active',
-    tasks_today: 14,
-    last_run: '12 mins ago',
+    description: 'Advanced financial forecasting, runway insights, and multi-agent workflow triggers.',
+    features: ['Financial Forecasting', 'Runway Insights', 'Custom Multi-Agent Workflows'],
+    status: 'active',
+    tasksToday: 14,
+    lastRun: '12 mins ago',
+    requiredTier: 'CFO Tier', // Exclusive to CFO Tier
   },
   {
     id: 'controller-claw',
     name: 'Controller Claw',
-    role: 'Anomaly Detection, Compliance & Audit',
-    status: 'Active',
-    tasks_today: 3,
-    last_run: 'Just now',
+    description: 'Enterprise-grade anomaly detection, compliance checks, and audit-ready exports.',
+    features: ['Anomaly Detection', 'Compliance Oversight', 'Audit-Ready Data Exports'],
+    status: 'action-needed',
+    tasksToday: 3,
+    lastRun: 'Just now',
+    requiredTier: 'CFO Tier', // Exclusive to CFO Tier
   },
 ];
 
 export default function ClawsPage() {
   const [claws, setClaws] = useState(DEFAULT_CLAWS);
+  const [userTier, setUserTier] = useState('Starter');
   const [loading, setLoading] = useState(true);
-  const [updatingId, setUpdatingId] = useState(null);
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    async function fetchClaws() {
+    async function fetchUserData() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const { data, error } = await supabase
+          // Fetch user's active subscription tier from user_profiles table
+          const { data: profileData, error: profileError } = await supabase
+            .from('user_profiles')
+            .select('tier')
+            .eq('id', user.id)
+            .single();
+
+          if (profileError) {
+            console.error('Error fetching user tier:', profileError);
+          } else if (profileData && profileData.tier) {
+            setUserTier(profileData.tier);
+          }
+
+          // Fetch custom claw configurations if stored in DB
+          const { data: clawData, error: clawError } = await supabase
             .from('claws_config')
             .select('*')
             .eq('user_id', user.id);
 
-          if (error) {
-            console.error('Supabase fetch error:', error);
-          }
-
-          if (data && data.length > 0) {
-            // Map database records directly, matching by name or falling back cleanly
-            setClaws(
-              data.map((item) => ({
-                id: item.id,
-                name: item.name,
-                role: item.role,
-                status: item.status || 'Active',
-                tasks_today: item.tasks_today ?? 0,
-                last_run: item.last_run || 'Just now',
-              }))
+          if (!clawError && clawData && clawData.length > 0) {
+            setClaws((prevClaws) =>
+              prevClaws.map((defaultClaw) => {
+                const found = clawData.find((c) => c.id === defaultClaw.id);
+                if (found) {
+                  return {
+                    ...defaultClaw,
+                    status: found.status?.toLowerCase() === 'active' ? 'active' : 'idle',
+                    tasksToday: found.tasks_today ?? defaultClaw.tasksToday,
+                    lastRun: found.last_run || defaultClaw.lastRun,
+                  };
+                }
+                return defaultClaw;
+              })
             );
           }
         }
       } catch (err) {
-        console.error('Error loading claw configurations:', err);
+        console.error('Error loading claws and profile data:', err);
       } finally {
         setLoading(false);
       }
     }
 
-    fetchClaws();
+    fetchUserData();
   }, []);
 
-  const toggleClawStatus = async (id, currentStatus) => {
-    setUpdatingId(id);
-    const newStatus = currentStatus === 'Active' ? 'Idle' : 'Active';
-
-    // Optimistic UI update
-    setClaws((prev) =>
-      prev.map((claw) => (claw.id === id ? { ...claw, status: newStatus } : claw))
-    );
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase
-          .from('claws_config')
-          .update({ 
-            status: newStatus, 
-            last_run: 'Just now', 
-            updated_at: new Date().toISOString() 
-          })
-          .eq('id', id)
-          .eq('user_id', user.id);
-      }
-    } catch (err) {
-      console.error('Error updating claw state:', err);
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
   return (
-    <div className="flex h-screen bg-background text-zinc-100 overflow-hidden">
-      <Sidebar />
+    <div className="flex h-screen bg-[#090a0f] text-zinc-100 overflow-hidden font-sans">
+      <Sidebar 
+        collapsed={collapsed} 
+        setCollapsed={setCollapsed} 
+        onSignOut={() => {
+          supabase.auth.signOut();
+          localStorage.removeItem('clawai_auth');
+          window.location.href = '/auth';
+        }} 
+      />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        <header className="flex items-center justify-between border-b border-surface-border px-8 py-4 bg-surface/50 backdrop-blur">
+        <header className="flex items-center justify-between border-b border-zinc-800/80 px-8 py-5 bg-[#13151b]/50 backdrop-blur">
           <div>
-            <h1 className="text-xl font-bold text-white">AI Claws Management</h1>
-            <p className="text-xs text-zinc-400">Configure and monitor your autonomous financial agents</p>
+            <h1 className="text-xl font-bold text-white tracking-tight">AI Claws Management</h1>
+            <p className="text-xs text-zinc-400 mt-0.5">Configure, execute, and monitor your autonomous financial agents</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-400">Workspace Tier:</span>
+            <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+              {userTier}
+            </span>
           </div>
         </header>
 
-        <main className="p-8 space-y-4">
+        <main className="p-8 max-w-5xl w-full mx-auto space-y-4">
           {loading ? (
-            <div className="flex items-center gap-2 text-xs text-zinc-400">
-              <Loader2 className="h-4 w-4 animate-spin text-accent" />
-              Loading AI agent statuses...
+            <div className="flex items-center justify-center py-20 gap-2 text-xs text-zinc-400">
+              <Loader2 className="h-5 w-5 animate-spin text-emerald-400" />
+              Loading agent permissions and statuses...
             </div>
           ) : (
-            claws.map((claw) => (
-              <div
-                key={claw.id}
-                className="flex items-center justify-between rounded-xl border border-surface-border bg-surface p-6"
-              >
-                <div className="flex items-start gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
-                    <Bot className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-semibold text-white">{claw.name}</h3>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          claw.status === 'Active'
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : claw.status === 'Action Needed'
-                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                            : 'bg-zinc-700/30 text-zinc-400 border border-zinc-700/50'
-                        }`}
-                      >
-                        {claw.status}
-                      </span>
-                    </div>
-                    <p className="text-xs text-zinc-400 mt-1">{claw.role}</p>
-
-                    <div className="flex items-center gap-4 mt-3 text-[11px] text-zinc-500">
-                      <span>Tasks today: <strong className="text-zinc-300">{claw.tasks_today}</strong></span>
-                      <span>•</span>
-                      <span>Last run: <strong className="text-zinc-300">{claw.last_run}</strong></span>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => toggleClawStatus(claw.id, claw.status)}
-                  disabled={updatingId === claw.id}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    claw.status === 'Active'
-                      ? 'border-surface-border bg-background text-zinc-300 hover:text-white hover:border-zinc-500'
-                      : 'border-accent bg-accent text-background hover:bg-accent/90'
-                  }`}
-                >
-                  {updatingId === claw.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : claw.status === 'Active' ? (
-                    <>
-                      <Pause className="h-3.5 w-3.5" /> Pause Agent
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-3.5 w-3.5" /> Activate Agent
-                    </>
-                  )}
-                </button>
-              </div>
-            ))
+            <div className="grid grid-cols-1 gap-4">
+              {claws.map((claw) => (
+                <AIClawCard
+                  key={claw.id}
+                  name={claw.name}
+                  description={claw.description}
+                  features={claw.features}
+                  status={claw.status}
+                  tasksToday={claw.tasksToday}
+                  requiredTier={claw.requiredTier}
+                  userTier={userTier}
+                />
+              ))}
+            </div>
           )}
         </main>
       </div>

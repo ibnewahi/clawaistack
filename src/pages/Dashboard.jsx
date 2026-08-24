@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { Zap } from 'lucide-react';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
@@ -18,7 +19,6 @@ import ReviewQueue from '../components/views/ReviewQueue';
 import AuditLogsView from '../components/views/AuditLogsView';
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState('Dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState('ClawAI Stack Int Ltd');
   const [hideMetrics, setHideMetrics] = useState(false);
@@ -251,8 +251,6 @@ export default function Dashboard() {
     <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex font-sans selection:bg-emerald-500/30">
       
       <Sidebar 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
         collapsed={collapsed} 
         setCollapsed={setCollapsed} 
         onSignOut={async () => {
@@ -291,59 +289,73 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Tab View Orchestrator */}
-        {activeTab === 'Dashboard' && (
-          <div className="flex-1 flex flex-col">
-            {/* Overview Main Content Area */}
-            <div className="p-6 space-y-6">
-              <OverviewView 
+        {/* Nested Router View Orchestrator */}
+        <Routes>
+          <Route 
+            path="/" 
+            element={
+              <div className="flex-1 flex flex-col">
+                <div className="p-6 space-y-6">
+                  <OverviewView 
+                    selectedCompany={selectedCompany}
+                    hideMetrics={hideMetrics}
+                    handleTriggerAgent={handleTriggerAgent}
+                    clawsList={clawsList}
+                    toggleClawStatus={toggleClawStatus}
+                    logFilter={logFilter}
+                    setLogFilter={setLogFilter}
+                    filteredLogs={filteredLogs}
+                    isLoadingLogs={isLogsLoading}
+                    showNotification={showNotification}
+                  />
+                  <ReviewQueue />
+                </div>
+              </div>
+            } 
+          />
+
+          <Route 
+            path="claws" 
+            element={
+              <ClawsView 
                 selectedCompany={selectedCompany}
-                hideMetrics={hideMetrics}
-                handleTriggerAgent={handleTriggerAgent}
                 clawsList={clawsList}
                 toggleClawStatus={toggleClawStatus}
-                logFilter={logFilter}
-                setLogFilter={setLogFilter}
-                filteredLogs={filteredLogs}
-                isLoadingLogs={isLogsLoading}
+                handleTriggerAgent={handleTriggerAgent}
                 showNotification={showNotification}
               />
-              
-              {/* Human-in-the-Loop Review Queue Component */}
-              <ReviewQueue />
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'AI Claws' && (
-          <ClawsView 
-            selectedCompany={selectedCompany}
-            clawsList={clawsList}
-            toggleClawStatus={toggleClawStatus}
-            handleTriggerAgent={handleTriggerAgent}
-            showNotification={showNotification}
+            } 
           />
-        )}
 
-        {activeTab === 'Integrations' && (
-          <IntegrationsView showNotification={showNotification} />
-        )}
-
-        {activeTab === 'Reports' && (
-          <ReportsView showNotification={showNotification} />
-        )}
-
-        {activeTab === 'Audit Logs' && (
-          <AuditLogsView />
-        )}
-
-        {activeTab === 'Settings' && (
-          <SettingsView 
-            selectedCompany={selectedCompany} 
-            setSelectedCompany={setSelectedCompany} 
-            showNotification={showNotification} 
+          <Route 
+            path="integrations" 
+            element={<IntegrationsView showNotification={showNotification} />} 
           />
-        )}
+
+          <Route 
+            path="reports" 
+            element={<ReportsView showNotification={showNotification} />} 
+          />
+
+          <Route 
+            path="audit-logs" 
+            element={<AuditLogsView />} 
+          />
+
+          <Route 
+            path="settings" 
+            element={
+              <SettingsView 
+                selectedCompany={selectedCompany} 
+                setSelectedCompany={setSelectedCompany} 
+                showNotification={showNotification} 
+              />
+            } 
+          />
+
+          {/* Catch-all redirect back to dashboard overview */}
+          <Route path="*" element={<Navigate to="" replace />} />
+        </Routes>
 
       </div>
 

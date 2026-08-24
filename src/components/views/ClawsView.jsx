@@ -2,6 +2,7 @@ import React from 'react';
 import { Cpu, Zap, Play, Pause, Plus, Lock, ChevronRight, Sparkles } from 'lucide-react';
 import { compileClawPayload, executeClawFunction } from "../../lib/sopEngine";
 import { runAgentAutonomousTask } from "../../lib/agentDispatcher";
+import { supabase } from "../../lib/supabase"; // <--- Added Supabase import for live integration lookup
 
 const TIER_LEVELS = {
   Starter: 1,
@@ -40,23 +41,46 @@ export default function ClawsView({
   const handleRunOverride = async (clawKey, clawName) => {
     try {
       if (showNotification) {
-        showNotification(`Compiling SOP & invoking ${clawName}...`);
+        showNotification(`Fetching active integrations & compiling SOP for ${clawName}...`);
       }
 
-      // 1. Compile SOP prompt and system rules payload
+      // 1. Fetch active integration tokens from Supabase so the agent has live data access
+      const { data: activeIntegrations, error: intError } = await supabase
+        .from('integrations')
+        .select('integration_key, config_data, is_connected')
+        .eq('is_connected', true);
+
+      if (intError) {
+        console.warn('Could not fetch live integrations:', intError.message);
+      }
+
+      // Map integrations into a clean key-value object (e.g., { bitget: { api_secret: '...' }, odoo: { ... } })
+      const integrationContext = {};
+      if (activeIntegrations) {
+        activeIntegrations.forEach(item => {
+          integrationContext[item.integration_key] = item.config_data;
+        });
+      }
+
+      if (showNotification) {
+        showNotification(`Compiling SOP & invoking ${clawName} with live integration context...`);
+      }
+
+      // 2. Compile SOP prompt and system rules payload including live integration secrets/endpoints
       const payload = await compileClawPayload(clawKey, {
         triggerSource: 'Manual Dashboard Override',
         company: selectedCompany,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        integrations: integrationContext // <--- Live integration context injected here
       });
 
       console.log(`[SOP Engine Payload Compiled - ${clawKey}]:`, payload);
 
-      // 2. Invoke live Supabase Edge Function backed by Groq LLM
+      // 3. Invoke live Supabase Edge Function backed by Groq LLM
       const result = await executeClawFunction(payload);
       console.log(`[Edge Function Response - ${clawKey}]:`, result);
 
-      // 3. Automatically record execution to your immutable audit log trail
+      // 4. Automatically record execution to your immutable audit log trail
       await runAgentAutonomousTask({
         agentName: clawName,
         taskType: `Manual Override Execution (${clawKey})`,
@@ -68,7 +92,7 @@ export default function ClawsView({
         showNotification(`Successfully executed & logged ${clawName}!`);
       }
 
-      // 4. Notify parent workspace or callback handler if defined
+      // 5. Notify parent workspace or callback handler if defined
       if (handleTriggerAgent) {
         handleTriggerAgent(clawName, result);
       }

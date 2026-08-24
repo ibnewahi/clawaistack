@@ -1,39 +1,63 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, ShieldAlert, PlusCircle } from 'lucide-react';
+import { CheckCircle, XCircle, ShieldAlert, PlusCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { logAuditEntry } from '../../lib/auditLogger';
 
 export default function ReviewQueue() {
-  const [queueItems, setQueueItems] = useState(() => {
-    const saved = localStorage.getItem('claw_review_queue');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* fallback */ }
-    }
-    return [
-      {
-        id: '1',
-        agent_name: 'Bookkeeper Claw',
-        action_type: 'Categorize Expense',
-        payload: { vendor: 'AWS Cloud Hosting', amount: '$450.00', category: 'Software Infrastructure' },
-        confidence_score: 0.88,
-        created_at: new Date().toISOString()
-      },
-      {
-        id: '2',
-        agent_name: 'AP Claw',
-        action_type: '3-Way Match Invoice #9402',
-        payload: { vendor: 'Stripe Processing', amount: '$1,250.00', po_match: 'Partial' },
-        confidence_score: 0.82,
-        created_at: new Date().toISOString()
-      }
-    ];
-  });
-
+  const [queueItems, setQueueItems] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
+  // Helper to show a clean toast notification
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, show: false }));
+    }, 4000);
+  };
+
+  // Fetch pending items from Supabase on mount
   useEffect(() => {
-    localStorage.setItem('claw_review_queue', JSON.stringify(queueItems));
-  }, [queueItems]);
+    fetchReviewQueue();
+  }, []);
+
+  const fetchReviewQueue = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('action_queue')
+        .select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        const saved = localStorage.getItem('claw_review_queue');
+        if (saved) {
+          try { setQueueItems(JSON.parse(saved)); } catch (e) { /* fallback */ }
+        } else {
+          setQueueItems([
+            {
+              id: '1',
+              agent_name: 'Bookkeeper Claw',
+              action_type: 'Categorize Expense',
+              payload: { vendor: 'AWS Cloud Hosting', amount: '$450.00', category: 'Software Infrastructure' },
+              confidence_score: 0.88,
+              created_at: new Date().toISOString()
+            }
+          ]);
+        }
+      } else {
+        setQueueItems(data);
+      }
+    } catch (err) {
+      console.error('Error fetching review queue:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAction = async (item, decision) => {
     setProcessingId(item.id);
@@ -41,7 +65,6 @@ export default function ReviewQueue() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Use our updated dual-table logger utility
       const result = await logAuditEntry({
         userId: user ? user.id : null,
         agentName: item.agent_name,
@@ -53,17 +76,27 @@ export default function ReviewQueue() {
       });
 
       if (!result.success) {
-        alert(`Failed to record audit log: ${result.error}`);
+        showToast(`Failed to record audit log: ${result.error}`, 'error');
         return;
       }
 
-      // Success - remove from queue permanently
+      const { error: updateError } = await supabase
+        .from('action_queue')
+        .update({ status: decision })
+        .eq('id', item.id);
+
+      if (updateError) {
+        console.warn('Could not update queue row in DB:', updateError.message);
+      }
+
       setQueueItems(prev => prev.filter(q => q.id !== item.id));
-      alert('Audit log recorded successfully to both tables!');
+      localStorage.setItem('claw_review_queue', JSON.stringify(queueItems.filter(q => q.id !== item.id)));
+      
+      showToast(`Action successfully ${decision} and recorded to audit trail!`, 'success');
 
     } catch (err) {
       console.error('Unexpected error:', err);
-      alert(`Error: ${err.message}`);
+      showToast(`Error: ${err.message}`, 'error');
     } finally {
       setProcessingId(null);
     }
@@ -73,29 +106,43 @@ export default function ReviewQueue() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
-      const result = await logAuditEntry({
-        userId: user ? user.id : null,
-        agentName: 'Test Claw',
-        actionType: 'Manual Test Execution',
-        status: 'approved',
-        previousState: null,
-        newState: { message: 'Testing dual-table audit log insertion', amount: '$500.00' },
-        confidence_score: 0.95
-      });
+      const { error } = await supabase
+        .from('action_queue')
+        .insert([
+          {
+            agent_name: 'Test Claw',
+            action_type: 'Manual Low-Confidence Test',
+            payload: { vendor: 'Test Vendor Inc.', amount: '$250.00', category: 'Testing' },
+            confidence_score: 0.84,
+            status: 'pending',
+            created_at: new Date().toISOString()
+          }
+        ]);
 
-      if (result.success) {
-        alert('Test audit log successfully recorded to both tables!');
-        window.location.reload(); // Refresh to see it in audit logs view
-      } else {
-        alert(`Failed to record: ${result.error}`);
-      }
+      if (error) throw error;
+
+      showToast('Test pending item added to Review Queue!', 'success');
+      fetchReviewQueue();
     } catch (err) {
-      alert(`Error: ${err.message}`);
+      showToast(`Error adding test item: ${err.message}`, 'error');
     }
   };
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-[#13151b] p-6 shadow-xl space-y-6">
+    <div className="relative rounded-2xl border border-zinc-800 bg-[#13151b] p-6 shadow-xl space-y-6">
+      
+      {/* Toast Notification Banner */}
+      {toast.show && (
+        <div className={`absolute top-4 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-medium shadow-2xl transition-all duration-300 animate-fade-in ${
+          toast.type === 'error' 
+            ? 'bg-red-500/10 border-red-500/30 text-red-400' 
+            : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+        }`}>
+          {toast.type === 'error' ? <AlertCircle className="h-4 w-4 shrink-0" /> : <CheckCircle className="h-4 w-4 shrink-0" />}
+          <span>{toast.message}</span>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-400">
@@ -112,7 +159,7 @@ export default function ReviewQueue() {
             onClick={handleTestLog}
             className="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/20 transition flex items-center gap-1.5 cursor-pointer"
           >
-            <PlusCircle className="h-3.5 w-3.5" /> Trigger Test Audit Log
+            <PlusCircle className="h-3.5 w-3.5" /> Sim. Low-Confidence Item
           </button>
           <span className="text-xs font-mono bg-yellow-500/10 text-yellow-400 px-3 py-1.5 rounded-full border border-yellow-500/20">
             {queueItems.length} Items Pending
@@ -120,7 +167,9 @@ export default function ReviewQueue() {
         </div>
       </div>
 
-      {queueItems.length === 0 ? (
+      {loading ? (
+        <div className="text-center py-12 text-zinc-500 text-sm">Loading review queue...</div>
+      ) : queueItems.length === 0 ? (
         <div className="text-center py-12 text-zinc-500 text-sm">
           All AI actions have been successfully reviewed and logged!
         </div>
@@ -134,11 +183,11 @@ export default function ReviewQueue() {
                   <span className="text-zinc-600">•</span>
                   <span className="text-xs text-zinc-300">{item.action_type}</span>
                   <span className="text-[10px] font-mono bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded">
-                    Confidence: {Math.round(item.confidence_score * 100)}%
+                    Confidence: {Math.round((item.confidence_score || 0.85) * 100)}%
                   </span>
                 </div>
                 <div className="mt-2 text-sm text-zinc-200 font-mono">
-                  {item.payload.vendor || 'Transaction'} — <span className="text-emerald-400">{item.payload.amount || '$0.00'}</span> ({item.payload.category || item.payload.po_match || 'Verified'})
+                  {item.payload?.vendor || 'Transaction'} — <span className="text-emerald-400">{item.payload?.amount || '$0.00'}</span> ({item.payload?.category || item.payload?.po_match || 'Review Required'})
                 </div>
               </div>
 

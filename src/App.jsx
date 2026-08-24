@@ -5,6 +5,7 @@ import { ArrowLeft, Shield, FileText, Lock, Building, Newspaper, Briefcase } fro
 import LandingPage from './pages/LandingPage'; 
 import Dashboard from './pages/Dashboard';
 import AuthPage from './pages/Auth';
+import PricingPage from './pages/PricingPage'; // <--- Imported Pricing Page
 
 // Security Guard Component
 const ProtectedRoute = ({ children }) => {
@@ -50,13 +51,22 @@ const InformationPage = ({ title, icon: Icon, description }) => (
 export default function App() {
   return (
     <Routes>
-      {/* Core Application Routes */}
+      {/* Core Application & Pricing Routes */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/auth" element={<AuthPage />} />
       
-      {/* Protected Dashboard Route */}
       <Route 
-        path="/dashboard" 
+        path="/pricing" 
+        element={
+          <ProtectedRoute>
+            <PricingPage />
+          </ProtectedRoute>
+        } 
+      />
+      
+      {/* Protected Dashboard Routes with Wildcard for Sub-views */}
+      <Route 
+        path="/dashboard/*" 
         element={
           <ProtectedRoute>
             <Dashboard />
