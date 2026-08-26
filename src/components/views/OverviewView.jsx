@@ -37,59 +37,59 @@ import { supabase } from '../../lib/supabase';
 // Multi-horizon dataset projections computed for financial planning
 const horizonDatasets = {
   Monthly: [
-    { month: 'Week 1', cash: 118000, burn: 3400 },
-    { month: 'Week 2', cash: 117100, burn: 3300 },
-    { month: 'Week 3', cash: 116200, burn: 3200 },
-    { month: 'Week 4', cash: 115000, burn: 3100 },
+    { month: 'Week 1', cash: 0, burn: 0 },
+    { month: 'Week 2', cash: 0, burn: 0 },
+    { month: 'Week 3', cash: 0, burn: 0 },
+    { month: 'Week 4', cash: 0, burn: 0 },
   ],
   Quarterly: [
-    { month: 'Apr', cash: 121000, burn: 14200 },
-    { month: 'May', cash: 118000, burn: 13800 },
-    { month: 'Jun', cash: 115000, burn: 13000 },
+    { month: 'Apr', cash: 0, burn: 0 },
+    { month: 'May', cash: 0, burn: 0 },
+    { month: 'Jun', cash: 0, burn: 0 },
   ],
   '6 Months': [
-    { month: 'Jan', cash: 140000, burn: 18000 },
-    { month: 'Feb', cash: 132000, burn: 16500 },
-    { month: 'Mar', cash: 128000, burn: 15000 },
-    { month: 'Apr', cash: 121000, burn: 14200 },
-    { month: 'May', cash: 118000, burn: 13800 },
-    { month: 'Jun', cash: 115000, burn: 13000 },
+    { month: 'Jan', cash: 0, burn: 0 },
+    { month: 'Feb', cash: 0, burn: 0 },
+    { month: 'Mar', cash: 0, burn: 0 },
+    { month: 'Apr', cash: 0, burn: 0 },
+    { month: 'May', cash: 0, burn: 0 },
+    { month: 'Jun', cash: 0, burn: 0 },
   ],
   Yearly: [
-    { month: 'Q1 25', cash: 165000, burn: 52000 },
-    { month: 'Q2 25', cash: 150000, burn: 48000 },
-    { month: 'Q3 25', cash: 138000, burn: 45000 },
-    { month: 'Q4 25', cash: 125000, burn: 42000 },
-    { month: 'Q1 26', cash: 118000, burn: 39000 },
-    { month: 'Q2 26', cash: 115000, burn: 36000 },
+    { month: 'Q1 25', cash: 0, burn: 0 },
+    { month: 'Q2 25', cash: 0, burn: 0 },
+    { month: 'Q3 25', cash: 0, burn: 0 },
+    { month: 'Q4 25', cash: 0, burn: 0 },
+    { month: 'Q1 26', cash: 0, burn: 0 },
+    { month: 'Q2 26', cash: 0, burn: 0 },
   ]
 };
 
 // Trend data for slide-over drawer details
 const drawerTrendData = {
   liquidity: [
-    { month: 'Jan', cr: 1.80, qr: 1.55 },
-    { month: 'Feb', cr: 1.95, qr: 1.70 },
-    { month: 'Mar', cr: 2.10, qr: 1.85 },
-    { month: 'Apr', cr: 2.22, qr: 1.98 },
-    { month: 'May', cr: 2.35, qr: 2.08 },
-    { month: 'Jun', cr: 2.42, qr: 2.17 },
+    { month: 'Jan', cr: 0, qr: 0 },
+    { month: 'Feb', cr: 0, qr: 0 },
+    { month: 'Mar', cr: 0, qr: 0 },
+    { month: 'Apr', cr: 0, qr: 0 },
+    { month: 'May', cr: 0, qr: 0 },
+    { month: 'Jun', cr: 0, qr: 0 },
   ],
   profitability: [
-    { month: 'Jan', margin: 68, ebitda: 9800 },
-    { month: 'Feb', margin: 70, ebitda: 11200 },
-    { month: 'Mar', margin: 71, ebitda: 12000 },
-    { month: 'Apr', margin: 73, ebitda: 13100 },
-    { month: 'May', margin: 74, ebitda: 13800 },
-    { month: 'Jun', margin: 75, ebitda: 14500 },
+    { month: 'Jan', margin: 0, ebitda: 0 },
+    { month: 'Feb', margin: 0, ebitda: 0 },
+    { month: 'Mar', margin: 0, ebitda: 0 },
+    { month: 'Apr', margin: 0, ebitda: 0 },
+    { month: 'May', margin: 0, ebitda: 0 },
+    { month: 'Jun', margin: 0, ebitda: 0 },
   ],
   automation: [
-    { month: 'Jan', tasks: 42, accuracy: 98.1 },
-    { month: 'Feb', tasks: 68, accuracy: 98.8 },
-    { month: 'Mar', tasks: 94, accuracy: 99.2 },
-    { month: 'Apr', tasks: 115, accuracy: 99.6 },
-    { month: 'May', tasks: 140, accuracy: 99.8 },
-    { month: 'Jun', tasks: 168, accuracy: 100.0 },
+    { month: 'Jan', tasks: 0, accuracy: 100 },
+    { month: 'Feb', tasks: 0, accuracy: 100 },
+    { month: 'Mar', tasks: 0, accuracy: 100 },
+    { month: 'Apr', tasks: 0, accuracy: 100 },
+    { month: 'May', tasks: 0, accuracy: 100 },
+    { month: 'Jun', tasks: 0, accuracy: 100 },
   ]
 };
 
@@ -111,7 +111,15 @@ export default function OverviewView({
   const [showAllLogs, setShowAllLogs] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [selectedMetricModal, setSelectedMetricModal] = useState(null);
-  const [workspaceMetrics, setWorkspaceMetrics] = useState(null);
+  
+  // Initialize workspace metrics with explicit zero defaults[cite: 3]
+  const [workspaceMetrics, setWorkspaceMetrics] = useState({
+    cash_balance: 0,
+    monthly_burn: 0,
+    ar_collected: 0,
+    current_ratio: 0,
+    ebitda: 0
+  });
 
   const [taskHealth, setTaskHealth] = useState({
     tasksToday: filteredLogs?.length || 0,
@@ -126,7 +134,6 @@ export default function OverviewView({
         .from('claw_execution_logs')
         .select('accuracy_score');
 
-      // Scope metrics to active workspace ID if present
       if (selectedWorkspaceId) {
         query = query.eq('workspace_id', selectedWorkspaceId);
       }
@@ -149,7 +156,7 @@ export default function OverviewView({
     }
   };
 
-  // Fetch workspace financial metrics on workspace switch
+  // Fetch workspace financial metrics on workspace switch with zero fallback[cite: 3]
   useEffect(() => {
     fetchRealtimeTaskHealth();
 
@@ -168,10 +175,24 @@ export default function OverviewView({
         if (!error && data) {
           setWorkspaceMetrics(data);
         } else {
-          setWorkspaceMetrics(null);
+          // Fallback to strict zeros for brand-new workspaces[cite: 3]
+          setWorkspaceMetrics({
+            cash_balance: 0,
+            monthly_burn: 0,
+            ar_collected: 0,
+            current_ratio: 0,
+            ebitda: 0
+          });
         }
       } catch (err) {
         console.error('Error fetching workspace financial metrics:', err);
+        setWorkspaceMetrics({
+          cash_balance: 0,
+          monthly_burn: 0,
+          ar_collected: 0,
+          current_ratio: 0,
+          ebitda: 0
+        });
       }
     };
 
@@ -205,7 +226,6 @@ export default function OverviewView({
   const triggerAgentWithEffects = async (agentName) => {
     handleTriggerAgent(agentName);
     
-    // Log execution with active workspace context
     try {
       if (supabase && selectedWorkspaceId) {
         await supabase.from('claw_execution_logs').insert([
@@ -292,10 +312,10 @@ export default function OverviewView({
             </div>
             <div className="mt-3">
               <div className="text-2xl font-bold text-white font-mono leading-none">
-                £<CountUp start={80000} end={workspaceMetrics?.cash_balance || 115000} duration={2} separator="," />
+                £<CountUp start={0} end={workspaceMetrics?.cash_balance ?? 0} duration={1.5} separator="," />
               </div>
               <div className="mt-2 text-xs font-mono text-emerald-400/90 font-medium">
-                -£{workspaceMetrics?.monthly_burn || '13,000'} net monthly burn
+                -£{workspaceMetrics?.monthly_burn ?? 0} net monthly burn
               </div>
             </div>
           </div>
@@ -307,10 +327,10 @@ export default function OverviewView({
             </div>
             <div className="mt-3">
               <div className="text-2xl font-bold text-white font-mono leading-none">
-                £<CountUp start={0} end={workspaceMetrics?.ar_collected || 4850} duration={2} separator="," />
+                £<CountUp start={0} end={workspaceMetrics?.ar_collected ?? 0} duration={1.5} separator="," />
               </div>
               <div className="mt-2 text-xs font-mono text-emerald-400 font-medium">
-                +3 Invoices Recovered
+                0 Invoices Recovered
               </div>
             </div>
           </div>
@@ -322,10 +342,10 @@ export default function OverviewView({
             </div>
             <div className="mt-3">
               <div className="text-2xl font-bold text-white font-mono leading-none">
-                <CountUp start={1.0} end={workspaceMetrics?.current_ratio || 2.42} decimals={2} duration={1.8} />x CR
+                <CountUp start={0} end={workspaceMetrics?.current_ratio ?? 0} decimals={2} duration={1.5} />x CR
               </div>
               <div className="mt-2 text-xs font-mono text-emerald-400 font-medium">
-                EBITDA: £{workspaceMetrics?.ebitda || '14.5k'} (+12.4%)
+                EBITDA: £{workspaceMetrics?.ebitda ?? 0} (0%)
               </div>
             </div>
           </div>
@@ -392,7 +412,6 @@ export default function OverviewView({
 
       {/* Clickable Financial Health & Solvency Matrix Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Solvency & Liquidity */}
         <div 
           onClick={() => setSelectedMetricModal('liquidity')}
           className="bg-[#13151b] border border-zinc-800/80 hover:border-emerald-500/50 hover:bg-[#181a22] transition cursor-pointer rounded-2xl p-4 flex flex-col justify-between group shadow-sm hover:shadow-emerald-500/5"
@@ -406,21 +425,20 @@ export default function OverviewView({
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div>
               <span className="text-[10px] text-zinc-500 block">Current Ratio</span>
-              <span className="text-lg font-bold font-mono text-white">2.42x</span>
+              <span className="text-lg font-bold font-mono text-white">{workspaceMetrics?.current_ratio ?? 0}x</span>
               <span className="text-[10px] text-emerald-400 block font-mono">Target &gt; 1.5x</span>
             </div>
             <div>
               <span className="text-[10px] text-zinc-500 block">Quick Ratio</span>
-              <span className="text-lg font-bold font-mono text-zinc-200">2.17x</span>
+              <span className="text-lg font-bold font-mono text-zinc-200">0.00x</span>
               <span className="text-[10px] text-emerald-400 block font-mono">Target &gt; 1.0x</span>
             </div>
           </div>
           <div className="w-full bg-zinc-800/80 rounded-full h-1 mt-3 overflow-hidden">
-            <div className="bg-emerald-400 h-1 rounded-full" style={{ width: '82%' }}></div>
+            <div className="bg-emerald-400 h-1 rounded-full" style={{ width: '0%' }}></div>
           </div>
         </div>
 
-        {/* Profitability & Margins */}
         <div 
           onClick={() => setSelectedMetricModal('profitability')}
           className="bg-[#13151b] border border-zinc-800/80 hover:border-emerald-500/50 hover:bg-[#181a22] transition cursor-pointer rounded-2xl p-4 flex flex-col justify-between group shadow-sm hover:shadow-emerald-500/5"
@@ -434,21 +452,20 @@ export default function OverviewView({
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div>
               <span className="text-[10px] text-zinc-500 block">Gross Margin</span>
-              <span className="text-lg font-bold font-mono text-emerald-400">75.0%</span>
+              <span className="text-lg font-bold font-mono text-emerald-400">0.0%</span>
               <span className="text-[10px] text-zinc-400 block font-mono">SaaS Industry Avg</span>
             </div>
             <div>
               <span className="text-[10px] text-zinc-500 block">Monthly EBITDA</span>
-              <span className="text-lg font-bold font-mono text-white">£14,500</span>
-              <span className="text-[10px] text-emerald-400 block font-mono">+12.4% MoM</span>
+              <span className="text-lg font-bold font-mono text-white">£{workspaceMetrics?.ebitda ?? 0}</span>
+              <span className="text-[10px] text-emerald-400 block font-mono">0% MoM</span>
             </div>
           </div>
           <div className="w-full bg-zinc-800/80 rounded-full h-1 mt-3 overflow-hidden">
-            <div className="bg-emerald-400 h-1 rounded-full" style={{ width: '75%' }}></div>
+            <div className="bg-emerald-400 h-1 rounded-full" style={{ width: '0%' }}></div>
           </div>
         </div>
 
-        {/* Autonomous Execution Performance */}
         <div 
           onClick={() => setSelectedMetricModal('automation')}
           className="bg-[#13151b] border border-zinc-800/80 hover:border-emerald-500/50 hover:bg-[#181a22] transition cursor-pointer rounded-2xl p-4 flex flex-col justify-between group shadow-sm hover:shadow-emerald-500/5"
@@ -525,7 +542,6 @@ export default function OverviewView({
           )}
         </div>
 
-        {/* Tab Content: Claws */}
         {activeTab === 'claws' && (
           <div className="space-y-2.5 animate-in fade-in duration-150">
             {displayedClaws.map((claw) => (
@@ -610,7 +626,6 @@ export default function OverviewView({
           </div>
         )}
 
-        {/* Tab Content: Logs */}
         {activeTab === 'logs' && (
           <div className="space-y-2.5 animate-in fade-in duration-150">
             {displayedLogs.map((log) => (
@@ -653,7 +668,6 @@ export default function OverviewView({
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex justify-end animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-[#13151b] border-l border-zinc-800 h-full p-6 space-y-6 overflow-y-auto shadow-2xl flex flex-col justify-between">
             <div className="space-y-6">
-              {/* Drawer Header */}
               <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
                 <div>
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
@@ -673,7 +687,6 @@ export default function OverviewView({
                 </button>
               </div>
 
-              {/* Drawer Trend Chart */}
               <div className="bg-[#090a0f] p-4 border border-zinc-800/80 rounded-2xl space-y-2">
                 <span className="text-xs font-semibold text-zinc-300">6-Month Trend Trajectory</span>
                 <div className="h-40 w-full">
@@ -695,7 +708,6 @@ export default function OverviewView({
                 </div>
               </div>
 
-              {/* Variable Component Breakdown */}
               <div className="space-y-3">
                 <span className="text-xs font-semibold text-zinc-300">Underlying Ledger Components</span>
                 <div className="space-y-2 text-xs">
@@ -703,15 +715,15 @@ export default function OverviewView({
                     <>
                       <div className="p-3 bg-[#181a22] border border-zinc-800/80 rounded-xl flex justify-between items-center">
                         <span className="text-zinc-400">Current Assets (Cash + AR)</span>
-                        <span className="font-mono text-white font-bold">£135,200</span>
+                        <span className="font-mono text-white font-bold">£0</span>
                       </div>
                       <div className="p-3 bg-[#181a22] border border-zinc-800/80 rounded-xl flex justify-between items-center">
                         <span className="text-zinc-400">Current Liabilities (AP + Accruals)</span>
-                        <span className="font-mono text-white font-bold">£55,860</span>
+                        <span className="font-mono text-white font-bold">£0</span>
                       </div>
                       <div className="p-3 bg-[#181a22] border border-zinc-800/80 rounded-xl flex justify-between items-center">
                         <span className="text-zinc-400">Quick Assets (Excl. Inventory)</span>
-                        <span className="font-mono text-white font-bold">£121,200</span>
+                        <span className="font-mono text-white font-bold">£0</span>
                       </div>
                     </>
                   )}
@@ -720,15 +732,15 @@ export default function OverviewView({
                     <>
                       <div className="p-3 bg-[#181a22] border border-zinc-800/80 rounded-xl flex justify-between items-center">
                         <span className="text-zinc-400">Gross Monthly Revenue</span>
-                        <span className="font-mono text-white font-bold">£58,000</span>
+                        <span className="font-mono text-white font-bold">£0</span>
                       </div>
                       <div className="p-3 bg-[#181a22] border border-zinc-800/80 rounded-xl flex justify-between items-center">
                         <span className="text-zinc-400">Cost of Goods Sold (COGS)</span>
-                        <span className="font-mono font-bold text-emerald-400/90">£14,500</span>
+                        <span className="font-mono font-bold text-emerald-400/90">£0</span>
                       </div>
                       <div className="p-3 bg-[#181a22] border border-zinc-800/80 rounded-xl flex justify-between items-center">
                         <span className="text-zinc-400">Operating Expenses (OpEx)</span>
-                        <span className="font-mono font-bold text-emerald-400/90">£29,000</span>
+                        <span className="font-mono font-bold text-emerald-400/90">£0</span>
                       </div>
                     </>
                   )}
@@ -737,7 +749,7 @@ export default function OverviewView({
                     <>
                       <div className="p-3 bg-[#181a22] border border-zinc-800/80 rounded-xl flex justify-between items-center">
                         <span className="text-zinc-400">Reconciliation Match Rate</span>
-                        <span className="font-mono text-emerald-400 font-bold">99.8%</span>
+                        <span className="font-mono text-emerald-400 font-bold">100.0%</span>
                       </div>
                       <div className="p-3 bg-[#181a22] border border-zinc-800/80 rounded-xl flex justify-between items-center">
                         <span className="text-zinc-400">3-Way Match Success</span>
@@ -753,7 +765,6 @@ export default function OverviewView({
               </div>
             </div>
 
-            {/* Drawer Footer Action */}
             <div className="border-t border-zinc-800 pt-4">
               <button 
                 onClick={() => setSelectedMetricModal(null)}

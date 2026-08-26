@@ -506,7 +506,7 @@ export default function Header({
 
                 <form onSubmit={handleSaveProfile} className="space-y-3 text-xs">
                   <div>
-                    <label className="block text-zinc-400 mb-1 font-medium text-[11px]">Full Name</label>
+                    <label className="block text-zinc-400 mb-1 font-medium text-[11px]">full_name</label>
                     <input 
                       type="text" 
                       value={userProfile.name}
