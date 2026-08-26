@@ -95,6 +95,7 @@ const drawerTrendData = {
 
 export default function OverviewView({ 
   selectedCompany = "ClawAI Stack Int Ltd", 
+  selectedWorkspaceId = null,
   hideMetrics = false, 
   handleTriggerAgent = () => {}, 
   clawsList = [], 
@@ -110,6 +111,7 @@ export default function OverviewView({
   const [showAllLogs, setShowAllLogs] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [selectedMetricModal, setSelectedMetricModal] = useState(null);
+  const [workspaceMetrics, setWorkspaceMetrics] = useState(null);
 
   const [taskHealth, setTaskHealth] = useState({
     tasksToday: filteredLogs?.length || 0,
@@ -119,9 +121,17 @@ export default function OverviewView({
   const fetchRealtimeTaskHealth = async () => {
     try {
       if (!supabase) return;
-      const { data, error } = await supabase
+      
+      let query = supabase
         .from('claw_execution_logs')
         .select('accuracy_score');
+
+      // Scope metrics to active workspace ID if present
+      if (selectedWorkspaceId) {
+        query = query.eq('workspace_id', selectedWorkspaceId);
+      }
+
+      const { data, error } = await query;
 
       if (!error && data) {
         const totalTasks = data.length;
@@ -139,17 +149,44 @@ export default function OverviewView({
     }
   };
 
+  // Fetch workspace financial metrics on workspace switch
   useEffect(() => {
     fetchRealtimeTaskHealth();
 
+    const fetchWorkspaceFinancials = async () => {
+      if (!supabase) return;
+      try {
+        let query = supabase
+          .from('financial_metrics')
+          .select('*');
+
+        if (selectedWorkspaceId) {
+          query = query.eq('workspace_id', selectedWorkspaceId);
+        }
+
+        const { data, error } = await query.maybeSingle();
+        if (!error && data) {
+          setWorkspaceMetrics(data);
+        } else {
+          setWorkspaceMetrics(null);
+        }
+      } catch (err) {
+        console.error('Error fetching workspace financial metrics:', err);
+      }
+    };
+
+    fetchWorkspaceFinancials();
+
     if (supabase) {
       const channel = supabase
-        .channel('overview_task_health_realtime')
+        .channel(`overview_task_health_${selectedWorkspaceId || 'global'}`)
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'claw_execution_logs' },
-          () => {
-            fetchRealtimeTaskHealth();
+          (payload) => {
+            if (!selectedWorkspaceId || payload.new?.workspace_id === selectedWorkspaceId) {
+              fetchRealtimeTaskHealth();
+            }
           }
         )
         .subscribe();
@@ -158,15 +195,34 @@ export default function OverviewView({
         supabase.removeChannel(channel);
       };
     }
-  }, []);
+  }, [selectedWorkspaceId]);
 
   const toggleMenu = (e, id) => {
     e.stopPropagation();
     setOpenMenuId(openMenuId === id ? null : id);
   };
 
-  const triggerAgentWithEffects = (agentName) => {
+  const triggerAgentWithEffects = async (agentName) => {
     handleTriggerAgent(agentName);
+    
+    // Log execution with active workspace context
+    try {
+      if (supabase && selectedWorkspaceId) {
+        await supabase.from('claw_execution_logs').insert([
+          {
+            claw_id: `${agentName.toLowerCase()}-claw`,
+            task_name: `Manual ${agentName} Run`,
+            status: 'Success',
+            accuracy_score: 100,
+            workspace_id: selectedWorkspaceId,
+            created_at: new Date().toISOString()
+          }
+        ]);
+      }
+    } catch (err) {
+      console.error('Error logging workspace agent trigger:', err);
+    }
+
     toast.success(`${agentName} agent triggered successfully!`, {
       description: `Executing real-time workflow for ${selectedCompany}...`
     });
@@ -236,10 +292,10 @@ export default function OverviewView({
             </div>
             <div className="mt-3">
               <div className="text-2xl font-bold text-white font-mono leading-none">
-                £<CountUp start={80000} end={115000} duration={2} separator="," />
+                £<CountUp start={80000} end={workspaceMetrics?.cash_balance || 115000} duration={2} separator="," />
               </div>
               <div className="mt-2 text-xs font-mono text-emerald-400/90 font-medium">
-                -£13,000 net monthly burn
+                -£{workspaceMetrics?.monthly_burn || '13,000'} net monthly burn
               </div>
             </div>
           </div>
@@ -251,7 +307,7 @@ export default function OverviewView({
             </div>
             <div className="mt-3">
               <div className="text-2xl font-bold text-white font-mono leading-none">
-                £<CountUp start={0} end={4850} duration={2} separator="," />
+                £<CountUp start={0} end={workspaceMetrics?.ar_collected || 4850} duration={2} separator="," />
               </div>
               <div className="mt-2 text-xs font-mono text-emerald-400 font-medium">
                 +3 Invoices Recovered
@@ -266,10 +322,10 @@ export default function OverviewView({
             </div>
             <div className="mt-3">
               <div className="text-2xl font-bold text-white font-mono leading-none">
-                <CountUp start={1.0} end={2.42} decimals={2} duration={1.8} />x CR
+                <CountUp start={1.0} end={workspaceMetrics?.current_ratio || 2.42} decimals={2} duration={1.8} />x CR
               </div>
               <div className="mt-2 text-xs font-mono text-emerald-400 font-medium">
-                EBITDA: £14.5k (+12.4%)
+                EBITDA: £{workspaceMetrics?.ebitda || '14.5k'} (+12.4%)
               </div>
             </div>
           </div>
@@ -327,7 +383,6 @@ export default function OverviewView({
                 ]}
               />
               
-              {/* Darkened subtle bar fill for net burn outflow */}
               <Bar yAxisId="right" dataKey="burn" name="burn" fill="#162e24" stroke="#059669" strokeWidth={1} radius={[4, 4, 0, 0]} barSize={24} />
               <Area yAxisId="left" type="monotone" dataKey="cash" name="cash" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#cashAreaGradient)" />
             </ComposedChart>

@@ -1,17 +1,17 @@
 import { useState, useEffect } from "react";
 import { executeClawAgent, getRecentAgentLogs } from "../lib/clawApi.js";
 
-export default function AgentConsole() {
+export default function AgentConsole({ selectedWorkspaceId }) {
   const [loading, setLoading] = useState(false);
   const [activeOutput, setActiveOutput] = useState(null);
   const [logs, setLogs] = useState([]);
 
   useEffect(() => {
     fetchLogs();
-  }, []);
+  }, [selectedWorkspaceId]);
 
   const fetchLogs = async () => {
-    const data = await getRecentAgentLogs(10);
+    const data = await getRecentAgentLogs(10, selectedWorkspaceId);
     setLogs(data);
   };
 
@@ -22,8 +22,10 @@ export default function AgentConsole() {
     try {
       const response = await executeClawAgent({
         clawKey,
+        workspaceId: selectedWorkspaceId,
         payload: {
           triggerSource: `Dashboard UI Manual Trigger (${clawKey})`,
+          workspaceId: selectedWorkspaceId,
           timestamp: new Date().toISOString(),
         },
       });

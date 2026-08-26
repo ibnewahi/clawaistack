@@ -1,22 +1,25 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Cpu, Zap, Play, Pause, Plus, Lock, ChevronRight, Sparkles } from 'lucide-react';
 import { compileClawPayload, executeClawFunction } from "../../lib/sopEngine";
 import { runAgentAutonomousTask } from "../../lib/agentDispatcher";
-import { supabase } from "../../lib/supabase"; // <--- Added Supabase import for live integration lookup
+import { supabase } from "../../lib/supabase";
 
+// Updated hierarchy weights to match your Supabase database tiers
 const TIER_LEVELS = {
-  Starter: 1,
-  Growth: 2,
-  Enterprise: 3,
+  free: 0,
+  starter: 1,
+  business: 2,
+  cfo: 3,
+  Enterprise: 3, // Backward compatibility
 };
 
-// Fallback tier requirements mapped to claw keys if not explicitly provided in claw object
+// Fallback tier requirements mapped to claw keys
 const DEFAULT_TIER_MAPPINGS = {
-  LedgerClaw: 'Starter',
-  CollectClaw: 'Growth',
-  PayClaw: 'Growth',
-  AuditClaw: 'Enterprise',
-  InsightClaw: 'Enterprise',
+  LedgerClaw: 'starter',
+  CollectClaw: 'business',
+  PayClaw: 'business',
+  AuditClaw: 'cfo',
+  InsightClaw: 'cfo',
 };
 
 export default function ClawsView({ 
@@ -25,16 +28,36 @@ export default function ClawsView({
   toggleClawStatus, 
   handleTriggerAgent, 
   showNotification,
-  currentWorkspaceTier = 'Starter',
   onUpgradeClick
 }) {
-  const userTierLevel = TIER_LEVELS[currentWorkspaceTier] || 1;
+  // State to store live user tier fetched from Supabase profiles table
+  const [workspaceTier, setWorkspaceTier] = useState('free');
+
+  useEffect(() => {
+    async function fetchLiveTier() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('tier')
+          .eq('id', user.id)
+          .single();
+        
+        if (data && data.tier) {
+          setWorkspaceTier(data.tier);
+        }
+      }
+    }
+    fetchLiveTier();
+  }, []);
+
+  const userTierLevel = TIER_LEVELS[workspaceTier] || 0;
 
   const handleUpgradeAction = (requiredTier, clawName) => {
     if (onUpgradeClick) {
       onUpgradeClick();
     } else if (showNotification) {
-      showNotification(`Upgrade to ${requiredTier} Plan to unlock ${clawName}`);
+      showNotification(`Upgrade to ${requiredTier.toUpperCase()} Plan to unlock ${clawName}`);
     }
   };
 
@@ -44,7 +67,7 @@ export default function ClawsView({
         showNotification(`Fetching active integrations & compiling SOP for ${clawName}...`);
       }
 
-      // 1. Fetch active integration tokens from Supabase so the agent has live data access
+      // 1. Fetch active integration tokens from Supabase
       const { data: activeIntegrations, error: intError } = await supabase
         .from('integrations')
         .select('integration_key, config_data, is_connected')
@@ -54,7 +77,6 @@ export default function ClawsView({
         console.warn('Could not fetch live integrations:', intError.message);
       }
 
-      // Map integrations into a clean key-value object (e.g., { bitget: { api_secret: '...' }, odoo: { ... } })
       const integrationContext = {};
       if (activeIntegrations) {
         activeIntegrations.forEach(item => {
@@ -66,19 +88,16 @@ export default function ClawsView({
         showNotification(`Compiling SOP & invoking ${clawName} with live integration context...`);
       }
 
-      // 2. Compile SOP prompt and system rules payload including live integration secrets/endpoints
+      // 2. Compile SOP prompt payload
       const payload = await compileClawPayload(clawKey, {
         triggerSource: 'Manual Dashboard Override',
         company: selectedCompany,
         timestamp: new Date().toISOString(),
-        integrations: integrationContext // <--- Live integration context injected here
+        integrations: integrationContext
       });
-
-      console.log(`[SOP Engine Payload Compiled - ${clawKey}]:`, payload);
 
       // 3. Invoke live Supabase Edge Function backed by Groq LLM
       const result = await executeClawFunction(payload);
-      console.log(`[Edge Function Response - ${clawKey}]:`, result);
 
       // 4. Automatically record execution to your immutable audit log trail
       await runAgentAutonomousTask({
@@ -92,7 +111,6 @@ export default function ClawsView({
         showNotification(`Successfully executed & logged ${clawName}!`);
       }
 
-      // 5. Notify parent workspace or callback handler if defined
       if (handleTriggerAgent) {
         handleTriggerAgent(clawName, result);
       }
@@ -116,7 +134,7 @@ export default function ClawsView({
               Autonomous AI Claws Center
             </h1>
             <span className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              {currentWorkspaceTier} Plan
+              {workspaceTier.toUpperCase()} Plan
             </span>
           </div>
           <p className="text-xs text-zinc-400 mt-1">
@@ -125,9 +143,9 @@ export default function ClawsView({
         </div>
 
         <div className="flex items-center gap-3">
-          {currentWorkspaceTier !== 'Enterprise' && (
+          {workspaceTier !== 'cfo' && (
             <button 
-              onClick={() => handleUpgradeAction('Enterprise', 'higher tier Claws')}
+              onClick={() => handleUpgradeAction('cfo', 'higher tier Claws')}
               className="px-3.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer transition"
             >
               <Sparkles className="h-3.5 w-3.5" />
@@ -148,7 +166,7 @@ export default function ClawsView({
       {/* Claws Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {clawsList.map((claw) => {
-          const requiredTier = claw.requiredTier || DEFAULT_TIER_MAPPINGS[claw.key] || 'Starter';
+          const requiredTier = claw.requiredTier || DEFAULT_TIER_MAPPINGS[claw.key] || 'starter';
           const requiredLevel = TIER_LEVELS[requiredTier] || 1;
           const isLocked = userTierLevel < requiredLevel;
 
@@ -175,7 +193,7 @@ export default function ClawsView({
                   {isLocked ? (
                     <div className="px-3 py-1 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center gap-1.5">
                       <Lock className="h-3 w-3" />
-                      <span>{requiredTier} Tier</span>
+                      <span>{requiredTier.toUpperCase()} Tier</span>
                     </div>
                   ) : (
                     <button 
@@ -217,7 +235,7 @@ export default function ClawsView({
                     onClick={() => handleUpgradeAction(requiredTier, claw.name)}
                     className="w-full py-2 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 text-amber-400 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <span>Upgrade to {requiredTier} to Unlock</span>
+                    <span>Upgrade to {requiredTier.toUpperCase()} to Unlock</span>
                     <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 ) : (

@@ -3,17 +3,17 @@ import { Check, Zap, Shield, Crown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 export default function PricingPage() {
-  const [currentTier, setCurrentTier] = useState('Starter');
+  const [currentTier, setCurrentTier] = useState('starter');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
 
-  // Fetch the user's current tier on load
+  // Fetch the user's current tier on load using the correct 'profiles' table
   useEffect(() => {
     async function fetchUserTier() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data, error } = await supabase
-          .from('user_profiles')
+          .from('profiles')
           .select('tier')
           .eq('id', user.id)
           .single();
@@ -26,7 +26,7 @@ export default function PricingPage() {
     fetchUserTier();
   }, []);
 
-  // Handle tier upgrade action
+  // Handle tier upgrade action targeting the 'profiles' table
   const handleUpgrade = async (newTier) => {
     setIsLoading(true);
     setMessage('');
@@ -35,15 +35,15 @@ export default function PricingPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No authenticated user found.');
 
-      // Update the user profile tier in Supabase
+      // Update the user profile tier in the correct 'profiles' table
       const { error } = await supabase
-        .from('user_profiles')
+        .from('profiles')
         .upsert({ id: user.id, tier: newTier, updated_at: new Date() });
 
       if (error) throw error;
 
       setCurrentTier(newTier);
-      setMessage(`Successfully updated subscription to ${newTier}!`);
+      setMessage(`Successfully updated subscription to ${newTier.toUpperCase()} Tier!`);
       setIsLoading(false);
     } catch (err) {
       console.error('Error updating tier:', err.message);
@@ -52,21 +52,21 @@ export default function PricingPage() {
     }
   };
 
-  // Synchronized with accurate claw distribution per tier
+  // Synchronized with clean tier keys matching feature gating logic
   const plans = [
     {
       name: 'Starter',
       price: '$49',
       description: 'Perfect for solo founders getting started with AI finance.',
       features: ['Bookkeeper Claw', 'Standard reconciliation', 'Basic cash alerts', '30-day history'],
-      tierKey: 'Starter'
+      tierKey: 'starter'
     },
     {
       name: 'Business',
       price: '$149',
       description: 'For growing teams that need automated financial ops.',
       features: ['Bookkeeper, AR & AP Claws', 'Automated email actions', 'API & Accounting integrations', '90-day history', 'Priority support'],
-      tierKey: 'Business',
+      tierKey: 'business',
       popular: true
     },
     {
@@ -74,7 +74,7 @@ export default function PricingPage() {
       price: '$399',
       description: 'Enterprise-grade finance automation with full control.',
       features: ['All 5 AI Claws (Includes CFO & Controller)', 'Custom multi-agent workflows', 'Dedicated support', 'Unlimited history', 'SSO & audit-ready exports'],
-      tierKey: 'CFO Tier'
+      tierKey: 'cfo'
     }
   ];
 

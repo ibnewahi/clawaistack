@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Layers, X, Key, ShieldCheck, CheckCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
-export default function IntegrationsView({ showNotification }) {
+export default function IntegrationsView({ selectedWorkspaceId, showNotification }) {
   const [selectedIntegration, setSelectedIntegration] = useState(null);
   const [apiSecret, setApiSecret] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -17,27 +17,28 @@ export default function IntegrationsView({ showNotification }) {
     { id: 'bitget', name: 'Bitget Exchange API', category: 'Crypto Treasury', status: 'Disconnected', desc: 'Syncs spot asset allocations and USDT balance reporting.' },
   ]);
 
-  // Fetch integration states from Supabase on mount
+  // Fetch integration states from Supabase on mount or workspace change
   useEffect(() => {
     const fetchIntegrations = async () => {
       setIsLoading(true);
       try {
-        const { data, error } = await supabase
-          .from('integrations')
-          .select('*');
+        let query = supabase.from('integrations').select('*');
+        
+        if (selectedWorkspaceId) {
+          query = query.eq('workspace_id', selectedWorkspaceId);
+        }
+
+        const { data, error } = await query;
 
         if (error) {
           console.error('Error fetching integrations:', error.message);
-        } else if (data && data.length > 0) {
+        } else {
           setIntegrations(prev => prev.map(item => {
-            const found = data.find(dbItem => dbItem.integration_key === item.id);
-            if (found) {
-              return {
-                ...item,
-                status: found.is_connected ? 'Connected' : 'Disconnected'
-              };
-            }
-            return item;
+            const found = data?.find(dbItem => dbItem.integration_key === item.id);
+            return {
+              ...item,
+              status: found?.is_connected ? 'Connected' : 'Disconnected'
+            };
           }));
         }
       } catch (err) {
@@ -48,7 +49,7 @@ export default function IntegrationsView({ showNotification }) {
     };
 
     fetchIntegrations();
-  }, []);
+  }, [selectedWorkspaceId]);
 
   const handleOpenConfig = (item) => {
     setSelectedIntegration(item);
@@ -65,14 +66,15 @@ export default function IntegrationsView({ showNotification }) {
         name: selectedIntegration.name,
         category: selectedIntegration.category,
         is_connected: true,
+        workspace_id: selectedWorkspaceId || null,
         config_data: { api_secret: apiSecret, updated_at: new Date().toISOString() },
         updated_at: new Date().toISOString()
       };
 
-      // Upsert into Supabase integrations table
+      // Upsert into Supabase integrations table (scoped by composite key or workspace if applicable)
       const { error } = await supabase
         .from('integrations')
-        .upsert(payload, { onConflict: 'integration_key' });
+        .upsert(payload, { onConflict: 'integration_key,workspace_id' });
 
       if (error) throw error;
 
@@ -152,7 +154,7 @@ export default function IntegrationsView({ showNotification }) {
               </div>
               <button 
                 onClick={() => setSelectedIntegration(null)}
-                className="text-zinc-400 hover:text-white transition"
+                className="text-zinc-400 hover:text-white transition cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -170,7 +172,7 @@ export default function IntegrationsView({ showNotification }) {
                   className="w-full bg-[#090a0f] border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 transition font-mono"
                 />
                 <p className="text-[11px] text-zinc-500">
-                  Your credentials are securely saved to your Supabase integrations table.
+                  Your credentials are securely saved to your Supabase integrations table for this workspace.
                 </p>
               </div>
 
@@ -183,14 +185,14 @@ export default function IntegrationsView({ showNotification }) {
                 <button
                   type="button"
                   onClick={() => setSelectedIntegration(null)}
-                  className="px-4 py-2 bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 rounded-xl hover:bg-zinc-800 transition"
+                  className="px-4 py-2 bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 rounded-xl hover:bg-zinc-800 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-xl transition flex items-center gap-2 disabled:opacity-50"
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-xl transition flex items-center gap-2 disabled:opacity-50 cursor-pointer"
                 >
                   {isSaving ? 'Saving to Database...' : 'Save & Connect'}
                 </button>

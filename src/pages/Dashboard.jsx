@@ -21,6 +21,8 @@ import AuditLogsView from '../components/views/AuditLogsView';
 export default function Dashboard() {
   const [collapsed, setCollapsed] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState('ClawAI Stack Int Ltd');
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(null); // Added Workspace ID State
+  
   const [hideMetrics, setHideMetrics] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -108,8 +110,11 @@ export default function Dashboard() {
     };
   }, []);
 
-  const handleCompanyChange = (newCompany) => {
+  const handleCompanyChange = (newCompany, workspaceId = null) => {
     setSelectedCompany(newCompany);
+    if (workspaceId) {
+      setSelectedWorkspaceId(workspaceId);
+    }
     showNotification(`Switched active entity to "${newCompany}"`);
   };
 
@@ -142,6 +147,7 @@ export default function Dashboard() {
       const payloadData = {
         triggerSource: 'Manual Agent UI Trigger',
         company: selectedCompany,
+        workspaceId: selectedWorkspaceId, // Pass workspace ID into payload context
         targetAudit: resolvedKey,
         invoiceId: 'INV-8890',
         amount: 12500,
@@ -298,6 +304,7 @@ export default function Dashboard() {
                 <div className="p-6 space-y-6">
                   <OverviewView 
                     selectedCompany={selectedCompany}
+                    selectedWorkspaceId={selectedWorkspaceId}
                     hideMetrics={hideMetrics}
                     handleTriggerAgent={handleTriggerAgent}
                     clawsList={clawsList}
@@ -308,7 +315,7 @@ export default function Dashboard() {
                     isLoadingLogs={isLogsLoading}
                     showNotification={showNotification}
                   />
-                  <ReviewQueue />
+                  <ReviewQueue selectedWorkspaceId={selectedWorkspaceId} />
                 </div>
               </div>
             } 
@@ -319,6 +326,7 @@ export default function Dashboard() {
             element={
               <ClawsView 
                 selectedCompany={selectedCompany}
+                selectedWorkspaceId={selectedWorkspaceId}
                 clawsList={clawsList}
                 toggleClawStatus={toggleClawStatus}
                 handleTriggerAgent={handleTriggerAgent}
@@ -329,17 +337,17 @@ export default function Dashboard() {
 
           <Route 
             path="integrations" 
-            element={<IntegrationsView showNotification={showNotification} />} 
+            element={<IntegrationsView selectedWorkspaceId={selectedWorkspaceId} showNotification={showNotification} />} 
           />
 
           <Route 
             path="reports" 
-            element={<ReportsView showNotification={showNotification} />} 
+            element={<ReportsView selectedWorkspaceId={selectedWorkspaceId} showNotification={showNotification} />} 
           />
 
           <Route 
             path="audit-logs" 
-            element={<AuditLogsView />} 
+            element={<AuditLogsView selectedWorkspaceId={selectedWorkspaceId} />} 
           />
 
           <Route 
@@ -347,6 +355,7 @@ export default function Dashboard() {
             element={
               <SettingsView 
                 selectedCompany={selectedCompany} 
+                selectedWorkspaceId={selectedWorkspaceId}
                 setSelectedCompany={setSelectedCompany} 
                 showNotification={showNotification} 
               />

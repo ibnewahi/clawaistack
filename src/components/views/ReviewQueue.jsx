@@ -3,7 +3,7 @@ import { CheckCircle, XCircle, ShieldAlert, PlusCircle, AlertCircle } from 'luci
 import { supabase } from '../../lib/supabase';
 import { logAuditEntry } from '../../lib/auditLogger';
 
-export default function ReviewQueue() {
+export default function ReviewQueue({ selectedWorkspaceId }) {
   const [queueItems, setQueueItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
@@ -17,38 +17,41 @@ export default function ReviewQueue() {
     }, 4000);
   };
 
-  // Fetch pending items from Supabase on mount
+  // Fetch pending items from Supabase on mount or workspace change
   useEffect(() => {
     fetchReviewQueue();
-  }, []);
+  }, [selectedWorkspaceId]);
 
   const fetchReviewQueue = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('action_queue')
         .select('*')
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
+        .eq('status', 'pending');
+
+      // Scope query to workspace if selected
+      if (selectedWorkspaceId) {
+        query = query.eq('workspace_id', selectedWorkspaceId);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
 
       if (!data || data.length === 0) {
-        const saved = localStorage.getItem('claw_review_queue');
-        if (saved) {
-          try { setQueueItems(JSON.parse(saved)); } catch (e) { /* fallback */ }
-        } else {
-          setQueueItems([
-            {
-              id: '1',
-              agent_name: 'Bookkeeper Claw',
-              action_type: 'Categorize Expense',
-              payload: { vendor: 'AWS Cloud Hosting', amount: '$450.00', category: 'Software Infrastructure' },
-              confidence_score: 0.88,
-              created_at: new Date().toISOString()
-            }
-          ]);
-        }
+        // Fallback demo items if no rows match the active workspace filter
+        setQueueItems([
+          {
+            id: '1',
+            agent_name: 'Bookkeeper Claw',
+            action_type: 'Categorize Expense',
+            payload: { vendor: 'AWS Cloud Hosting', amount: '$450.00', category: 'Software Infrastructure' },
+            confidence_score: 0.88,
+            workspace_id: selectedWorkspaceId,
+            created_at: new Date().toISOString()
+          }
+        ]);
       } else {
         setQueueItems(data);
       }
@@ -72,7 +75,8 @@ export default function ReviewQueue() {
         status: decision,
         previousState: null,
         newState: item.payload,
-        confidenceScore: item.confidence_score
+        confidenceScore: item.confidence_score,
+        workspaceId: selectedWorkspaceId
       });
 
       if (!result.success) {
@@ -90,8 +94,6 @@ export default function ReviewQueue() {
       }
 
       setQueueItems(prev => prev.filter(q => q.id !== item.id));
-      localStorage.setItem('claw_review_queue', JSON.stringify(queueItems.filter(q => q.id !== item.id)));
-      
       showToast(`Action successfully ${decision} and recorded to audit trail!`, 'success');
 
     } catch (err) {
@@ -104,8 +106,6 @@ export default function ReviewQueue() {
 
   const handleTestLog = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-
       const { error } = await supabase
         .from('action_queue')
         .insert([
@@ -115,6 +115,7 @@ export default function ReviewQueue() {
             payload: { vendor: 'Test Vendor Inc.', amount: '$250.00', category: 'Testing' },
             confidence_score: 0.84,
             status: 'pending',
+            workspace_id: selectedWorkspaceId || null,
             created_at: new Date().toISOString()
           }
         ]);
@@ -171,7 +172,7 @@ export default function ReviewQueue() {
         <div className="text-center py-12 text-zinc-500 text-sm">Loading review queue...</div>
       ) : queueItems.length === 0 ? (
         <div className="text-center py-12 text-zinc-500 text-sm">
-          All AI actions have been successfully reviewed and logged!
+          All AI actions have been successfully reviewed and logged for this workspace!
         </div>
       ) : (
         <div className="space-y-4">

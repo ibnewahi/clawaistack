@@ -2,21 +2,27 @@ import { useState, useEffect } from 'react';
 import { ShieldCheck, Search, Terminal, CheckCircle2, XCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
-export default function AuditLogsView() {
+export default function AuditLogsView({ selectedWorkspaceId }) {
   const [logs, setLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Fetch immutable logs from claw_execution_logs
+  // Fetch immutable logs from claw_execution_logs scoped by workspace
   useEffect(() => {
     const fetchAuditLogs = async () => {
       setIsLoading(true);
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('claw_execution_logs')
           .select('*')
           .order('created_at', { ascending: false });
+
+        if (selectedWorkspaceId) {
+          query = query.eq('workspace_id', selectedWorkspaceId);
+        }
+
+        const { data, error } = await query;
 
         if (error) {
           console.error('Error fetching audit logs:', error.message);
@@ -39,7 +45,10 @@ export default function AuditLogsView() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'claw_execution_logs' },
         (payload) => {
-          setLogs((prev) => [payload.new, ...prev]);
+          // Only append if it matches the current workspace view (or if no workspace is filtered)
+          if (!selectedWorkspaceId || payload.new.workspace_id === selectedWorkspaceId) {
+            setLogs((prev) => [payload.new, ...prev]);
+          }
         }
       )
       .subscribe();
@@ -47,7 +56,7 @@ export default function AuditLogsView() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [selectedWorkspaceId]);
 
   const filteredLogs = logs.filter((log) => {
     const matchesStatus = filterStatus === 'All' || log.status.toLowerCase() === filterStatus.toLowerCase();
@@ -121,7 +130,7 @@ export default function AuditLogsView() {
           </div>
         ) : filteredLogs.length === 0 ? (
           <div className="text-center py-16 text-zinc-500 text-xs">
-            No audit logs match your current filter or search criteria.
+            No audit logs match your current filter or search criteria for this workspace.
           </div>
         ) : (
           <div className="divide-y divide-zinc-800/60 overflow-x-auto">
