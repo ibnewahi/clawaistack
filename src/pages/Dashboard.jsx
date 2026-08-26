@@ -20,8 +20,14 @@ import AuditLogsView from '../components/views/AuditLogsView';
 
 export default function Dashboard() {
   const [collapsed, setCollapsed] = useState(false);
-  const [selectedCompany, setSelectedCompany] = useState('ClawAI Stack Int Ltd');
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(null); // Added Workspace ID State
+  
+  // Initialized synchronously from localStorage to eliminate startup flash
+  const [selectedCompany, setSelectedCompany] = useState(() => {
+    return localStorage.getItem('claw_active_workspace_name') || 'ClawAI Stack Int Ltd';
+  });
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(() => {
+    return localStorage.getItem('claw_active_workspace_id') || null;
+  });
   
   const [hideMetrics, setHideMetrics] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);

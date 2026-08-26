@@ -39,9 +39,11 @@ export default function Header({
   const [newCompanyName, setNewCompanyName] = useState('');
   const [currentTier, setCurrentTier] = useState('cfo');
   
-  // Real Supabase Workspaces State
+  // Real Supabase Workspaces State with localStorage persistence
   const [companies, setCompanies] = useState([]);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(null);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(() => {
+    return localStorage.getItem('claw_active_workspace_id') || null;
+  });
 
   // User Profile State
   const [userProfile, setUserProfile] = useState({
@@ -87,14 +89,21 @@ export default function Header({
 
           if (workspaceData && workspaceData.length > 0) {
             setCompanies(workspaceData);
-            // Match current company or default to the first workspace
-            const currentMatch = workspaceData.find(w => w.name === selectedCompany);
+            
+            // Match stored ID or name securely
+            const storedId = localStorage.getItem('claw_active_workspace_id');
+            const currentMatch = workspaceData.find(w => w.id === storedId) || workspaceData.find(w => w.name === selectedCompany);
+            
             if (currentMatch) {
               setSelectedWorkspaceId(currentMatch.id);
-              onCompanyChange(currentMatch.name, currentMatch.id); // Updated to pass id
+              onCompanyChange(currentMatch.name, currentMatch.id);
+              localStorage.setItem('claw_active_workspace_id', currentMatch.id);
+              localStorage.setItem('claw_active_workspace_name', currentMatch.name);
             } else if (workspaceData[0]) {
-              onCompanyChange(workspaceData[0].name, workspaceData[0].id); // Updated to pass id
               setSelectedWorkspaceId(workspaceData[0].id);
+              onCompanyChange(workspaceData[0].name, workspaceData[0].id);
+              localStorage.setItem('claw_active_workspace_id', workspaceData[0].id);
+              localStorage.setItem('claw_active_workspace_name', workspaceData[0].name);
             }
           } else {
             // Seed a default workspace if none exist yet
@@ -106,8 +115,10 @@ export default function Header({
 
             if (newWs) {
               setCompanies([newWs]);
-              onCompanyChange(newWs.name, newWs.id); // Updated to pass id
               setSelectedWorkspaceId(newWs.id);
+              onCompanyChange(newWs.name, newWs.id);
+              localStorage.setItem('claw_active_workspace_id', newWs.id);
+              localStorage.setItem('claw_active_workspace_name', newWs.name);
             }
           }
         }
@@ -214,8 +225,11 @@ export default function Header({
 
       if (data) {
         setCompanies(prev => [...prev, data]);
-        onCompanyChange(data.name, data.id); // Updated to pass id
         setSelectedWorkspaceId(data.id);
+        onCompanyChange(data.name, data.id);
+        
+        localStorage.setItem('claw_active_workspace_id', data.id);
+        localStorage.setItem('claw_active_workspace_name', data.name);
       }
 
       setNewCompanyName('');
@@ -255,28 +269,36 @@ export default function Header({
                 <div className="px-3 py-1.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
                   Switch Workspace Entity
                 </div>
-                {companies.map((comp) => (
-                  <button
-                    key={comp.id}
-                    type="button"
-                    onClick={() => {
-                      onCompanyChange(comp.name, comp.id); // Updated to pass id
-                      setSelectedWorkspaceId(comp.id);
-                      setIsCompanyMenuOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition cursor-pointer ${
-                      selectedCompany === comp.name 
-                        ? 'bg-emerald-500/10 text-emerald-300 font-medium' 
-                        : 'text-zinc-300 hover:bg-zinc-800/80 hover:text-white'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <Building2 className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                      <span className="truncate">{comp.name}</span>
-                    </div>
-                    {selectedCompany === comp.name && <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
-                  </button>
-                ))}
+                {companies.map((comp) => {
+                  const isSelected = selectedWorkspaceId ? comp.id === selectedWorkspaceId : selectedCompany === comp.name;
+
+                  return (
+                    <button
+                      key={comp.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedWorkspaceId(comp.id);
+                        onCompanyChange(comp.name, comp.id);
+                        
+                        localStorage.setItem('claw_active_workspace_id', comp.id);
+                        localStorage.setItem('claw_active_workspace_name', comp.name);
+                        
+                        setIsCompanyMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition cursor-pointer ${
+                        isSelected 
+                          ? 'bg-emerald-500/15 text-emerald-300 font-semibold' 
+                          : 'text-zinc-300 hover:bg-zinc-800/80 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <Building2 className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                        <span className="truncate">{comp.name}</span>
+                      </div>
+                      {isSelected && <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
+                    </button>
+                  );
+                })}
 
                 <div className="border-t border-zinc-800/80 mt-1 pt-1 px-1">
                   <button 
