@@ -4,16 +4,14 @@ import { compileClawPayload, executeClawFunction } from "../../lib/sopEngine";
 import { runAgentAutonomousTask } from "../../lib/agentDispatcher";
 import { supabase } from "../../lib/supabase";
 
-// Updated hierarchy weights to match your Supabase database tiers
 const TIER_LEVELS = {
   free: 0,
   starter: 1,
   business: 2,
   cfo: 3,
-  Enterprise: 3, // Backward compatibility
+  Enterprise: 3,
 };
 
-// Fallback tier requirements mapped to claw keys
 const DEFAULT_TIER_MAPPINGS = {
   LedgerClaw: 'starter',
   CollectClaw: 'business',
@@ -32,25 +30,30 @@ export default function ClawsView({
   showNotification,
   onUpgradeClick
 }) {
-  // State to store live user tier and loading status to prevent free-plan flashing
   const [workspaceTier, setWorkspaceTier] = useState('cfo'); 
   const [isTierLoading, setIsTierLoading] = useState(true);
-  const [updatingClawId, setUpdatingClawId] = useState(null);
+  
+  // Local status map to guarantee immediate UI toggle responsiveness
+  const [localStatuses, setLocalStatuses] = useState({});
+
+  // Active workspace ID with fallback to localStorage
+  const activeWsId = selectedWorkspaceId || localStorage.getItem('claw_active_workspace_id');
 
   useEffect(() => {
     async function fetchLiveTier() {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          // Fixed: Changed 'full_name' to 'full_name' to prevent 400 Bad Request error
-          const { data } = await supabase
-            .from('profiles')
-            .select('full_name, role, tier')
-            .eq('id', user.id)
-            .single();
-          
-          if (data && data.tier) {
-            setWorkspaceTier(data.tier);
+        if (supabase) {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const { data } = await supabase
+              .from('profiles')
+              .select('full_name, role, tier')
+              .eq('id', user.id)
+              .single();
+            
+            if (data && data.tier) {
+              setWorkspaceTier(data.tier);
+            }
           }
         }
       } catch (err) {
@@ -62,33 +65,44 @@ export default function ClawsView({
     fetchLiveTier();
   }, []);
 
-  // Fetch workspace-specific claw states whenever selectedWorkspaceId changes (with safety guard)
+  // --- WORKSPACE SYNC LOGIC ---
   useEffect(() => {
+    if (!activeWsId || activeWsId === 'undefined' || activeWsId === 'null') {
+      return;
+    }
+
     async function fetchWorkspaceClaws() {
-      // Guard: Skip if workspace ID is missing, null, or invalid placeholder
-      if (!selectedWorkspaceId || selectedWorkspaceId === 'undefined' || selectedWorkspaceId === 'null') {
-        return;
-      }
-
       try {
-        const { data, error } = await supabase
-          .from('workspace_claws')
-          .select('claw_id, status')
-          .eq('workspace_id', selectedWorkspaceId);
+        if (supabase) {
+          const { data, error } = await supabase
+            .from('workspace_claws')
+            .select('claw_id, status')
+            .eq('workspace_id', activeWsId);
 
-        if (!error && data && data.length > 0) {
-          setClawsList(prevClaws => 
-            prevClaws.map(claw => {
-              const clawIdKey = claw.id || claw.key;
-              const matched = data.find(item => item.claw_id === clawIdKey || item.claw_id === claw.id || item.claw_id === claw.key);
-              return matched ? { ...claw, status: matched.status } : { ...claw, status: 'Paused' };
-            })
-          );
-        } else {
-          // Default to Paused for workspaces without saved configurations
-          setClawsList(prevClaws => 
-            prevClaws.map(claw => ({ ...claw, status: 'Paused' }))
-          );
+          if (!error && data && data.length > 0) {
+            const initialMap = {};
+            data.forEach(item => {
+              if (item.claw_id && item.status) {
+                initialMap[item.claw_id] = item.status.toLowerCase() === 'active' ? 'Active' : 'Paused';
+              }
+            });
+            setLocalStatuses(prev => ({ ...prev, ...initialMap }));
+
+            setClawsList(prevClaws => 
+              prevClaws.map(claw => {
+                const matched = data.find(item => 
+                  item.claw_id === claw.id || 
+                  item.claw_id === claw.key || 
+                  item.claw_id?.toLowerCase() === claw.key?.toLowerCase()
+                );
+                if (matched && matched.status) {
+                  const normalizedStatus = matched.status.toLowerCase() === 'active' ? 'Active' : 'Paused';
+                  return { ...claw, status: normalizedStatus };
+                }
+                return claw;
+              })
+            );
+          }
         }
       } catch (err) {
         console.error('Error fetching workspace specific claws:', err);
@@ -96,7 +110,46 @@ export default function ClawsView({
     }
 
     fetchWorkspaceClaws();
-  }, [selectedWorkspaceId]);
+  }, [activeWsId, setClawsList]);
+
+  // Real-time Workspace Subscription
+  useEffect(() => {
+    if (!activeWsId || activeWsId === 'undefined' || activeWsId === 'null' || !supabase) return;
+
+    const channel = supabase
+      .channel(`realtime_workspace_claws_${activeWsId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'workspace_claws',
+          filter: `workspace_id=eq.${activeWsId}`,
+        },
+        (payload) => {
+          const updatedRow = payload.new;
+          if (updatedRow && updatedRow.claw_id) {
+            const normalizedStatus = updatedRow.status.toLowerCase() === 'active' ? 'Active' : 'Paused';
+            setLocalStatuses(prev => ({ ...prev, [updatedRow.claw_id]: normalizedStatus }));
+            setClawsList((prev) =>
+              prev.map((claw) => {
+                const keyMatch = 
+                  claw.id === updatedRow.claw_id || 
+                  claw.key === updatedRow.claw_id || 
+                  claw.key?.toLowerCase() === updatedRow.claw_id?.toLowerCase();
+                return keyMatch ? { ...claw, status: normalizedStatus } : claw;
+              })
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeWsId, setClawsList]);
+  // ----------------------------
 
   const userTierLevel = TIER_LEVELS[workspaceTier] || 0;
 
@@ -108,59 +161,53 @@ export default function ClawsView({
     }
   };
 
-  // Persistent toggle handler tied explicitly to workspace_claws table
-  const handlePersistentToggle = async (clawId, currentStatus) => {
-    const newStatus = currentStatus === 'Active' ? 'Paused' : 'Active';
-    setUpdatingClawId(clawId);
-
-    // Optimistically update local UI state immediately
-    setClawsList(prevList => 
-      prevList.map(claw => 
-        ((claw.id === clawId || claw.key === clawId)) 
-          ? { ...claw, status: newStatus } 
-          : claw
-      )
-    );
-
-    try {
-      if (supabase && selectedWorkspaceId) {
-        // Upsert state explicitly scoped to the active workspace
-        const { error } = await supabase
-          .from('workspace_claws')
-          .upsert({
-            workspace_id: selectedWorkspaceId,
-            claw_id: clawId,
-            status: newStatus,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'workspace_id,claw_id' });
-
-        if (error) {
-          console.error('Failed to upsert workspace claw status:', error.message);
-          if (showNotification) {
-            showNotification(`Database error saving claw status: ${error.message}`);
-          }
-          // Revert local state if database persist fails
-          setClawsList(prevList => 
-            prevList.map(claw => 
-              ((claw.id === clawId || claw.key === clawId)) 
-                ? { ...claw, status: currentStatus } 
-                : claw
-            )
-          );
-        } else {
-          if (showNotification) {
-            showNotification(`Claw ${clawId} set to ${newStatus} for ${selectedCompany}`);
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Failed to persist claw status change:', err);
-    } finally {
-      setUpdatingClawId(null);
+  // Immediate Local State Toggle & Supabase Persistence Handler
+  const handlePersistentToggle = async (clawId, clawKey, e) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
     }
+
+    const targetClaw = clawsList.find(c => c.id === clawId || c.key === clawKey || c.key === clawId);
+    if (!targetClaw) return;
+
+    const resolvedId = targetClaw.key || clawId;
+    const currentStatus = localStatuses[resolvedId] || (String(targetClaw.status).toLowerCase() === 'active' ? 'Active' : 'Paused');
+    const newStatus = currentStatus === 'Active' ? 'Paused' : 'Active';
+
+    // 1. Immediately update local override map for instant re-render
+    setLocalStatuses(prev => ({ ...prev, [resolvedId]: newStatus, [clawId]: newStatus }));
+
+    // 2. Also update parent list state if needed
+    setClawsList(prev => 
+      prev.map(c => (c.id === resolvedId || c.key === resolvedId || c.key === clawKey) ? { ...c, status: newStatus } : c)
+    );
 
     if (toggleClawStatus) {
       toggleClawStatus(clawId);
+    }
+
+    // 3. Save to Supabase database in the background
+    try {
+      if (supabase && activeWsId) {
+        const { error } = await supabase
+          .from('workspace_claws')
+          .upsert({
+            workspace_id: activeWsId,
+            claw_id: resolvedId,
+            status: newStatus.toLowerCase(),
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'workspace_id, claw_id' });
+
+        if (error) {
+          console.error('Failed to persist claw status to Supabase:', error.message);
+          if (showNotification) showNotification(`Error saving state: ${error.message}`);
+        } else {
+          if (showNotification) showNotification(`${targetClaw.name} is now ${newStatus}`);
+        }
+      }
+    } catch (err) {
+      console.error('Error in persistent toggle:', err);
     }
   };
 
@@ -170,28 +217,26 @@ export default function ClawsView({
         showNotification(`Fetching active integrations & compiling SOP for ${clawName}...`);
       }
 
-      // 1. Fetch active integration tokens from Supabase
-      const { data: activeIntegrations, error: intError } = await supabase
-        .from('integrations')
-        .select('integration_key, config_data, is_connected')
-        .eq('is_connected', true);
+      let integrationContext = {};
+      if (supabase) {
+        const { data: activeIntegrations, error: intError } = await supabase
+          .from('integrations')
+          .select('integration_key, config_data, is_connected')
+          .eq('is_connected', true);
 
-      if (intError) {
-        console.warn('Could not fetch live integrations:', intError.message);
-      }
-
-      const integrationContext = {};
-      if (activeIntegrations) {
-        activeIntegrations.forEach(item => {
-          integrationContext[item.integration_key] = item.config_data;
-        });
+        if (intError) {
+          console.warn('Could not fetch live integrations:', intError.message);
+        } else if (activeIntegrations) {
+          activeIntegrations.forEach(item => {
+            integrationContext[item.integration_key] = item.config_data;
+          });
+        }
       }
 
       if (showNotification) {
         showNotification(`Compiling SOP & invoking ${clawName} with live integration context...`);
       }
 
-      // 2. Compile SOP prompt payload
       const payload = await compileClawPayload(clawKey, {
         triggerSource: 'Manual Dashboard Override',
         company: selectedCompany,
@@ -199,10 +244,8 @@ export default function ClawsView({
         integrations: integrationContext
       });
 
-      // 3. Invoke live Supabase Edge Function backed by Groq LLM
       const result = await executeClawFunction(payload);
 
-      // 4. Automatically record execution to your immutable audit log trail
       await runAgentAutonomousTask({
         agentName: clawName,
         taskType: `Manual Override Execution (${clawKey})`,
@@ -248,6 +291,7 @@ export default function ClawsView({
         <div className="flex items-center gap-3">
           {workspaceTier !== 'cfo' && (
             <button 
+              type="button"
               onClick={() => handleUpgradeAction('cfo', 'higher tier Claws')}
               className="px-3.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer transition"
             >
@@ -257,6 +301,7 @@ export default function ClawsView({
           )}
 
           <button 
+            type="button"
             onClick={() => showNotification && showNotification("New custom Claw builder triggered")} 
             className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer transition"
           >
@@ -273,7 +318,10 @@ export default function ClawsView({
           const requiredTier = claw.requiredTier || DEFAULT_TIER_MAPPINGS[claw.key] || 'starter';
           const requiredLevel = TIER_LEVELS[requiredTier] || 1;
           const isLocked = !isTierLoading && userTierLevel < requiredLevel;
-          const isUpdating = updatingClawId === clawId;
+          
+          const resolvedId = claw.key || clawId;
+          const currentStatus = localStatuses[resolvedId] || localStatuses[clawId] || claw.status || 'Paused';
+          const isActive = String(currentStatus).toLowerCase() === 'active';
 
           return (
             <div 
@@ -294,26 +342,23 @@ export default function ClawsView({
                     <Zap className="h-5 w-5" />
                   </div>
 
-                  {/* Status Toggle OR Gatekeeping Lock Tag */}
                   {isLocked ? (
-                    <div className="px-3 py-1 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center gap-1.5">
+                    <div className="px-3 py-1 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center gap-1.5 select-none">
                       <Lock className="h-3 w-3" />
                       <span>{requiredTier.toUpperCase()} Tier</span>
                     </div>
                   ) : (
                     <button 
-                      disabled={isUpdating}
-                      onClick={() => handlePersistentToggle(clawId, claw.status)}
-                      className={`px-3 py-1 rounded-full text-[11px] font-semibold border flex items-center gap-1.5 cursor-pointer transition ${
-                        isUpdating ? 'opacity-50 cursor-not-allowed' : ''
-                      } ${
-                        claw.status === 'Active' 
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
-                          : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                      type="button"
+                      onClick={(e) => handlePersistentToggle(claw.id, claw.key, e)}
+                      className={`relative z-10 pointer-events-auto px-3 py-1 rounded-full text-[11px] font-semibold border flex items-center gap-1.5 cursor-pointer select-none transition ${
+                        isActive 
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20' 
+                          : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700 hover:text-zinc-200'
                       }`}
                     >
-                      {claw.status === 'Active' ? <Play className="h-3 w-3 fill-current" /> : <Pause className="h-3 w-3 fill-current" />}
-                      <span>{isUpdating ? 'Saving...' : claw.status}</span>
+                      {isActive ? <Play className="h-3 w-3 fill-current" /> : <Pause className="h-3 w-3 fill-current" />}
+                      <span>{isActive ? 'Active' : 'Paused'}</span>
                     </button>
                   )}
                 </div>
@@ -337,9 +382,9 @@ export default function ClawsView({
                   <span className="font-mono text-emerald-400 font-semibold">{isLocked ? '—' : claw.accuracy}</span>
                 </div>
 
-                {/* Execution Override OR Upgrade Lock Trigger */}
                 {isLocked ? (
                   <button 
+                    type="button"
                     onClick={() => handleUpgradeAction(requiredTier, claw.name)}
                     className="w-full py-2 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 text-amber-400 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer"
                   >
@@ -348,6 +393,7 @@ export default function ClawsView({
                   </button>
                 ) : (
                   <button 
+                    type="button"
                     onClick={() => handleRunOverride(claw.key, claw.name)}
                     className="w-full py-2 bg-zinc-900 border border-zinc-800 hover:border-emerald-500/40 text-zinc-200 hover:text-emerald-400 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2 cursor-pointer"
                   >

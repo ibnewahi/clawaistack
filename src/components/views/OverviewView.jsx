@@ -112,7 +112,13 @@ export default function OverviewView({
   const [openMenuId, setOpenMenuId] = useState(null);
   const [selectedMetricModal, setSelectedMetricModal] = useState(null);
   
-  // Initialize workspace metrics with explicit zero defaults[cite: 3]
+  // Dynamic single-source evaluation directly from clawsList prop
+  const activeClawsCount = (clawsList || []).filter(
+    (c) => String(c.status).toLowerCase() === 'active'
+  ).length;
+  const totalClawsCount = (clawsList || []).length || 5;
+
+  // Initialize workspace metrics with explicit zero defaults
   const [workspaceMetrics, setWorkspaceMetrics] = useState({
     cash_balance: 0,
     monthly_burn: 0,
@@ -156,7 +162,7 @@ export default function OverviewView({
     }
   };
 
-  // Fetch workspace financial metrics on workspace switch with zero fallback[cite: 3]
+  // Fetch workspace financial metrics on workspace switch with zero fallback
   useEffect(() => {
     fetchRealtimeTaskHealth();
 
@@ -175,7 +181,6 @@ export default function OverviewView({
         if (!error && data) {
           setWorkspaceMetrics(data);
         } else {
-          // Fallback to strict zeros for brand-new workspaces[cite: 3]
           setWorkspaceMetrics({
             cash_balance: 0,
             monthly_burn: 0,
@@ -297,10 +302,10 @@ export default function OverviewView({
             </div>
             <div className="mt-3">
               <div className="text-2xl font-bold text-white font-mono leading-none">
-                <CountUp start={0} end={5} duration={1.5} /> / 5
+                <CountUp start={0} end={activeClawsCount} duration={1.5} /> / {totalClawsCount}
               </div>
               <div className="mt-2 text-[10px] font-medium text-emerald-400 flex items-center gap-1">
-                <ArrowUpRight className="h-3 w-3" /> 5 Live Agents Active
+                <ArrowUpRight className="h-3 w-3" /> {activeClawsCount} Live Agents Active
               </div>
             </div>
           </div>
@@ -508,7 +513,9 @@ export default function OverviewView({
             >
               <Zap className="h-3.5 w-3.5" />
               Autonomous Claws Summary
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 font-mono">5/5 Active</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 font-mono">
+                {activeClawsCount}/{totalClawsCount} Active
+              </span>
             </button>
 
             <button
@@ -544,72 +551,75 @@ export default function OverviewView({
 
         {activeTab === 'claws' && (
           <div className="space-y-2.5 animate-in fade-in duration-150">
-            {displayedClaws.map((claw) => (
-              <div key={claw.id} className="p-3 bg-[#181a22] border border-zinc-800/80 rounded-xl flex items-center justify-between hover:border-zinc-700 transition relative">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-emerald-400">
-                    <Zap className="h-4 w-4" />
+            {displayedClaws.map((claw) => {
+              const isActive = String(claw.status).toLowerCase() === 'active';
+
+              return (
+                <div key={claw.id || claw.key} className="p-3 bg-[#181a22] border border-zinc-800/80 rounded-xl flex items-center justify-between hover:border-zinc-700 transition relative">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-emerald-400">
+                      <Zap className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-white">{claw.name}</span>
+                      <p className="text-[11px] text-zinc-400">{claw.desc}</p>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-xs font-semibold text-white">{claw.name}</span>
-                    <p className="text-[11px] text-zinc-400">{claw.desc}</p>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`px-2 py-0.5 text-[10px] font-medium rounded-md border ${
+                      isActive ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                    }`}>
+                      {claw.status}
+                    </span>
+
+                    <div className="relative">
+                      <button 
+                        onClick={(e) => toggleMenu(e, claw.id || claw.key)} 
+                        className="text-zinc-500 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800/80 transition cursor-pointer"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+
+                      {openMenuId === (claw.id || claw.key) && (
+                        <div className="absolute right-0 mt-2 w-48 bg-[#13151b] border border-zinc-800 rounded-xl shadow-2xl z-20 py-1.5 animate-in fade-in zoom-in-95 duration-100">
+                          <button
+                            onClick={() => {
+                              triggerAgentWithEffects(claw.name);
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800/70 hover:text-emerald-400 flex items-center gap-2 transition cursor-pointer"
+                          >
+                            <Play className="h-3.5 w-3.5 text-emerald-400" />
+                            <span>Run Manually Now</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setActiveTab('logs');
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800/70 hover:text-emerald-400 flex items-center gap-2 transition cursor-pointer"
+                          >
+                            <FileText className="h-3.5 w-3.5 text-zinc-400" />
+                            <span>View Execution Logs</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              toggleClawStatus(claw.id || claw.key);
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800/70 hover:text-amber-400 flex items-center gap-2 transition cursor-pointer border-t border-zinc-800/60 mt-1 pt-2"
+                          >
+                            <Settings className="h-3.5 w-3.5 text-amber-400" />
+                            <span>{isActive ? 'Pause Claw' : 'Activate Claw'}</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className={`px-2 py-0.5 text-[10px] font-medium rounded-md border ${
-                    claw.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                  }`}>
-                    {claw.status}
-                  </span>
-
-                  <div className="relative">
-                    <button 
-                      onClick={(e) => toggleMenu(e, claw.id)} 
-                      className="text-zinc-500 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800/80 transition cursor-pointer"
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
-
-                    {openMenuId === claw.id && (
-                      <div className="absolute right-0 mt-2 w-48 bg-[#13151b] border border-zinc-800 rounded-xl shadow-2xl z-20 py-1.5 animate-in fade-in zoom-in-95 duration-100">
-                        <button
-                          onClick={() => {
-                            triggerAgentWithEffects(claw.name);
-                            setOpenMenuId(null);
-                          }}
-                          className="w-full px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800/70 hover:text-emerald-400 flex items-center gap-2 transition cursor-pointer"
-                        >
-                          <Play className="h-3.5 w-3.5 text-emerald-400" />
-                          <span>Run Manually Now</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setActiveTab('logs');
-                            setOpenMenuId(null);
-                          }}
-                          className="w-full px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800/70 hover:text-emerald-400 flex items-center gap-2 transition cursor-pointer"
-                        >
-                          <FileText className="h-3.5 w-3.5 text-zinc-400" />
-                          <span>View Execution Logs</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            toggleClawStatus(claw.id);
-                            toast.success(`${claw.name} status updated.`);
-                            setOpenMenuId(null);
-                          }}
-                          className="w-full px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800/70 hover:text-amber-400 flex items-center gap-2 transition cursor-pointer border-t border-zinc-800/60 mt-1 pt-2"
-                        >
-                          <Settings className="h-3.5 w-3.5 text-amber-400" />
-                          <span>{claw.status === 'Active' ? 'Pause Claw' : 'Activate Claw'}</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
 
             <div className="pt-2 flex justify-center">
               <button

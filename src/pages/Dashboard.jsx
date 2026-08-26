@@ -74,16 +74,18 @@ export default function Dashboard() {
     const fetchExecutionLogs = async () => {
       setIsLogsLoading(true);
       try {
-        const { data, error } = await supabase
-          .from('claw_execution_logs')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(20);
+        if (supabase) {
+          const { data, error } = await supabase
+            .from('claw_execution_logs')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(20);
 
-        if (error) {
-          console.error('Error fetching execution logs:', error.message);
-        } else if (data) {
-          setDbLogs(data);
+          if (error) {
+            console.error('Error fetching execution logs:', error.message);
+          } else if (data) {
+            setDbLogs(data);
+          }
         }
       } catch (err) {
         console.error('Failed to load database logs:', err);
@@ -94,23 +96,24 @@ export default function Dashboard() {
 
     fetchExecutionLogs();
 
-    // Subscribe to live inserts on claw_execution_logs
-    channel = supabase
-      .channel('dashboard_logs_realtime')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'claw_execution_logs' },
-        (payload) => {
-          setDbLogs((prev) => {
-            if (prev.some((log) => log.id === payload.new.id)) return prev;
-            return [payload.new, ...prev.slice(0, 19)];
-          });
-        }
-      )
-      .subscribe();
+    if (supabase) {
+      channel = supabase
+        .channel('dashboard_logs_realtime')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'claw_execution_logs' },
+          (payload) => {
+            setDbLogs((prev) => {
+              if (prev.some((log) => log.id === payload.new.id)) return prev;
+              return [payload.new, ...prev.slice(0, 19)];
+            });
+          }
+        )
+        .subscribe();
+    }
 
     return () => {
-      if (channel) {
+      if (channel && supabase) {
         supabase.removeChannel(channel);
       }
     };
@@ -120,7 +123,9 @@ export default function Dashboard() {
     setSelectedCompany(newCompany);
     if (workspaceId) {
       setSelectedWorkspaceId(workspaceId);
+      localStorage.setItem('claw_active_workspace_id', workspaceId);
     }
+    localStorage.setItem('claw_active_workspace_name', newCompany);
     showNotification(`Switched active entity to "${newCompany}"`);
   };
 
@@ -132,13 +137,53 @@ export default function Dashboard() {
     }, 1200);
   };
 
+  // Workspace Deletion Handler
+  const handleDeleteWorkspace = async () => {
+    if (!selectedWorkspaceId) {
+      showNotification('No active workspace selected for deletion.');
+      return;
+    }
+
+    try {
+      if (supabase) {
+        // Delete related workspace claws first to respect foreign keys
+        await supabase.from('workspace_claws').delete().eq('workspace_id', selectedWorkspaceId);
+        
+        // Delete the workspace itself
+        const { error } = await supabase
+          .from('workspaces')
+          .delete()
+          .eq('id', selectedWorkspaceId);
+
+        if (error) throw error;
+      }
+
+      showNotification('Workspace successfully deleted.');
+      
+      // Clear local storage and reload app state
+      localStorage.removeItem('claw_active_workspace_id');
+      localStorage.removeItem('claw_active_workspace_name');
+      
+      setTimeout(() => {
+        window.location.reload();
+      }, 800);
+
+    } catch (err) {
+      console.error('Failed to delete workspace:', err);
+      showNotification(`Failed to delete workspace: ${err.message}`);
+    }
+  };
+
   // Dynamic Handler to invoke Supabase Edge Function with instant optimistic updates
   const handleTriggerAgent = async (clawIdentifier, customPrompt = '') => {
     showNotification(`Triggering ${clawIdentifier} execution...`);
     setIsExecutingClaw(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+      let token = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) token = session.access_token;
+      }
 
       const defaultPrompts = {
         'bookkeeper-claw': 'You are an expert Bookkeeper AI. Reconcile transaction logs. An unverified bill (INV-8890 for $12,500) requires 3-way AP matching. Return valid JSON containing "requires_ap_matching": true.',
@@ -153,7 +198,7 @@ export default function Dashboard() {
       const payloadData = {
         triggerSource: 'Manual Agent UI Trigger',
         company: selectedCompany,
-        workspaceId: selectedWorkspaceId, // Pass workspace ID into payload context
+        workspaceId: selectedWorkspaceId,
         targetAudit: resolvedKey,
         invoiceId: 'INV-8890',
         amount: 12500,
@@ -161,41 +206,43 @@ export default function Dashboard() {
         requires_ap_matching: true
       };
 
-      const { data, error } = await supabase.functions.invoke('execute-claw', {
-        body: { 
-          clawKey: resolvedKey, 
-          version: '1.0', 
-          systemPrompt: customPrompt || defaultPrompts[resolvedKey] || 'Execute autonomous finance audit task.', 
-          rulesConfig: {}, 
-          payload: payloadData
-        },
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      if (error) throw error;
-
-      setExecutionResult(data);
-      showNotification(`${resolvedKey} executed successfully!`);
-
-      if (data && data.success) {
-        const newLogEntry = data.logEntry || {
-          id: `opt-${Date.now()}`,
-          claw_id: resolvedKey,
-          task_name: `${resolvedKey.replace('-claw', '').toUpperCase()} Manual Run`,
-          status: 'Success',
-          accuracy_score: 100,
-          created_at: new Date().toISOString()
-        };
-
-        setDbLogs((prev) => [newLogEntry, ...prev.filter((l) => l.id !== newLogEntry.id)]);
-
-        setActiveModalData({
-          clawKey: data.clawKey || resolvedKey,
-          data: data.result || data
+      if (supabase) {
+        const { data, error } = await supabase.functions.invoke('execute-claw', {
+          body: { 
+            clawKey: resolvedKey, 
+            version: '1.0', 
+            systemPrompt: customPrompt || defaultPrompts[resolvedKey] || 'Execute autonomous finance audit task.', 
+            rulesConfig: {}, 
+            payload: payloadData
+          },
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
         });
-        setModalOpen(true);
+
+        if (error) throw error;
+
+        setExecutionResult(data);
+        showNotification(`${resolvedKey} executed successfully!`);
+
+        if (data && data.success) {
+          const newLogEntry = data.logEntry || {
+            id: `opt-${Date.now()}`,
+            claw_id: resolvedKey,
+            task_name: `${resolvedKey.replace('-claw', '').toUpperCase()} Manual Run`,
+            status: 'Success',
+            accuracy_score: 100,
+            created_at: new Date().toISOString()
+          };
+
+          setDbLogs((prev) => [newLogEntry, ...prev.filter((l) => l.id !== newLogEntry.id)]);
+
+          setActiveModalData({
+            clawKey: data.clawKey || resolvedKey,
+            data: data.result || data
+          });
+          setModalOpen(true);
+        }
       }
     } catch (err) {
       console.error(`Execution error for ${clawIdentifier}:`, err);
@@ -206,7 +253,6 @@ export default function Dashboard() {
     }
   };
 
-  // Invoke Supabase Edge Function for bookkeeper-claw test run
   const handleExecuteClawAI = () => {
     handleTriggerAgent(
       'bookkeeper-claw', 
@@ -222,15 +268,44 @@ export default function Dashboard() {
     { id: 'controller', name: 'Controller Audit Claw', key: 'controller-claw', desc: 'Scans ledger for duplicate payouts, unexpected tax anomalies, and compliance audit gaps.', status: 'Active', tasksToday: 8, accuracy: '100%' },
   ]);
 
-  const toggleClawStatus = (id) => {
-    setClawsList(prev => prev.map(c => {
-      if (c.id === id) {
-        const nextStatus = c.status === 'Active' ? 'Paused' : 'Active';
-        showNotification(`${c.name} status updated to ${nextStatus}`);
-        return { ...c, status: nextStatus };
-      }
-      return c;
-    }));
+  // PURE SYNCHRONOUS OPTIMISTIC TOGGLE (0ms latency, zero page flash)
+  const toggleClawStatus = (clawId) => {
+    let updatedClawName = '';
+    let newStatusStr = 'Paused';
+
+    setClawsList((prevList) =>
+      prevList.map((claw) => {
+        const isMatch = claw.id === clawId || claw.key === clawId;
+        if (isMatch) {
+          const isCurrentlyActive = String(claw.status).toLowerCase() === 'active';
+          newStatusStr = isCurrentlyActive ? 'Paused' : 'Active';
+          updatedClawName = claw.name;
+          return { ...claw, status: newStatusStr };
+        }
+        return claw;
+      })
+    );
+
+    if (updatedClawName) {
+      showNotification(`${updatedClawName} set to ${newStatusStr}`);
+    }
+
+    if (supabase && selectedWorkspaceId) {
+      const dbKey = String(clawId).includes('-claw') ? clawId : `${clawId}-claw`;
+      supabase
+        .from('workspace_claws')
+        .upsert(
+          {
+            workspace_id: selectedWorkspaceId,
+            claw_id: dbKey,
+            status: newStatusStr,
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'workspace_id,claw_id' }
+        )
+        .then(() => {})
+        .catch((err) => console.warn('Background status sync notice:', err));
+    }
   };
 
   const fallbackLogs = [
@@ -268,10 +343,12 @@ export default function Dashboard() {
         onSignOut={async () => {
           showNotification('Signing out...');
           localStorage.removeItem('clawai_auth');
-          try {
-            await supabase.auth.signOut();
-          } catch (err) {
-            console.error('Error signing out from Supabase:', err);
+          if (supabase) {
+            try {
+              await supabase.auth.signOut();
+            } catch (err) {
+              console.error('Error signing out:', err);
+            }
           }
           
           setTimeout(() => {
@@ -301,7 +378,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Nested Router View Orchestrator */}
         <Routes>
           <Route 
             path="/" 
@@ -334,6 +410,7 @@ export default function Dashboard() {
                 selectedCompany={selectedCompany}
                 selectedWorkspaceId={selectedWorkspaceId}
                 clawsList={clawsList}
+                setClawsList={setClawsList}
                 toggleClawStatus={toggleClawStatus}
                 handleTriggerAgent={handleTriggerAgent}
                 showNotification={showNotification}
@@ -363,12 +440,12 @@ export default function Dashboard() {
                 selectedCompany={selectedCompany} 
                 selectedWorkspaceId={selectedWorkspaceId}
                 setSelectedCompany={setSelectedCompany} 
-                showNotification={showNotification} 
+                showNotification={showNotification}
+                onDeleteWorkspace={handleDeleteWorkspace}
               />
             } 
           />
 
-          {/* Catch-all redirect back to dashboard overview */}
           <Route path="*" element={<Navigate to="" replace />} />
         </Routes>
 

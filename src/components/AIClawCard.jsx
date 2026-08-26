@@ -6,17 +6,22 @@ const statusConfig = {
   active: {
     label: 'Active',
     dot: 'bg-emerald-400',
-    badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+    badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25',
   },
   'action-needed': {
     label: 'Action Needed',
     dot: 'bg-amber-400 animate-pulse',
-    badge: 'bg-amber-400/15 text-amber-400 border-amber-400/30',
+    badge: 'bg-amber-400/15 text-amber-400 border-amber-400/30 hover:bg-amber-400/25',
+  },
+  paused: {
+    label: 'Paused',
+    dot: 'bg-zinc-500',
+    badge: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30 hover:bg-zinc-500/25',
   },
   idle: {
-    label: 'Idle',
+    label: 'Paused',
     dot: 'bg-zinc-500',
-    badge: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
+    badge: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30 hover:bg-zinc-500/25',
   },
 };
 
@@ -28,17 +33,19 @@ const tierWeights = {
 };
 
 export default function AIClawCard({
+  id,
   name,
   description,
-  status = 'idle',
+  status = 'paused',
   tasksToday = 0,
   icon: Icon = Bot,
-  requiredTier = 'Starter', // Minimum tier required to run this claw
-  userTier = 'Starter',      // Current user's tier passed from parent container
+  requiredTier = 'Starter',
+  userTier = 'Starter',
+  onToggleStatus,
 }) {
   const navigate = useNavigate();
   const RenderIcon = Icon || Bot;
-  const config = statusConfig[status] || statusConfig.idle;
+  const config = statusConfig[status] || statusConfig.paused;
 
   // Check if user's tier meets or exceeds the required tier
   const userWeight = tierWeights[userTier] || 1;
@@ -49,7 +56,7 @@ export default function AIClawCard({
     <div className={`group relative flex items-start gap-4 rounded-xl border p-4 transition ${
       isLocked 
         ? 'border-zinc-800/80 bg-zinc-900/40 opacity-75' 
-        : 'border-surface-border bg-surface hover:border-emerald-500/25 hover:bg-surface-elevated/50'
+        : 'border-zinc-800/80 bg-[#13151b] hover:border-emerald-500/25 hover:bg-[#181b24]'
     }`}>
       {/* Icon Section */}
       <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition ${
@@ -73,12 +80,15 @@ export default function AIClawCard({
           </div>
 
           {!isLocked && (
-            <span
-              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${config.badge}`}
+            <button
+              type="button"
+              onClick={onToggleStatus}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide transition cursor-pointer ${config.badge}`}
+              title="Click to toggle status"
             >
               <span className={`h-1.5 w-1.5 rounded-full ${config.dot}`} />
               {config.label}
-            </span>
+            </button>
           )}
         </div>
 
@@ -89,6 +99,7 @@ export default function AIClawCard({
           <div className="mt-3 flex items-center justify-between">
             <span className="text-[11px] text-zinc-500">Upgrade your workspace to unlock this claw.</span>
             <button
+              type="button"
               onClick={() => navigate('/pricing')}
               className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition cursor-pointer"
             >

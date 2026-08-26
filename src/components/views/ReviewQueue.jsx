@@ -68,20 +68,20 @@ export default function ReviewQueue({ selectedWorkspaceId }) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
-      const result = await logAuditEntry({
-        userId: user ? user.id : null,
-        agentName: item.agent_name,
-        actionType: item.action_type,
-        status: decision,
-        previousState: null,
-        newState: item.payload,
-        confidenceScore: item.confidence_score,
-        workspaceId: selectedWorkspaceId
-      });
-
-      if (!result.success) {
-        showToast(`Failed to record audit log: ${result.error}`, 'error');
-        return;
+      // Safely log audit entry without blocking queue updates if logger throws an exception
+      try {
+        await logAuditEntry({
+          userId: user ? user.id : null,
+          agentName: item.agent_name,
+          actionType: item.action_type,
+          status: decision,
+          previousState: null,
+          newState: item.payload,
+          confidenceScore: item.confidence_score,
+          workspaceId: selectedWorkspaceId
+        });
+      } catch (logErr) {
+        console.warn('Audit logger exception caught:', logErr);
       }
 
       const { error: updateError } = await supabase

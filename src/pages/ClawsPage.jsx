@@ -4,103 +4,125 @@ import AIClawCard from '../components/AIClawCard';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-// Claws mapped with your exact tier logic and explicit feature badges
 const DEFAULT_CLAWS = [
   {
     id: 'bookkeeper-claw',
     name: 'Bookkeeper Claw',
     description: 'Transaction categorization and standard reconciliation workflows for solo operations.',
     features: ['Transaction Categorization', 'Standard Reconciliation', 'Basic Cash Alerts', '30-Day Ledger History'],
-    status: 'active',
+    status: 'paused',
     tasksToday: 0,
     lastRun: '5 hrs ago',
-    requiredTier: 'Starter', // Available on Starter, Business, and CFO Tier
+    requiredTier: 'Starter',
   },
   {
     id: 'ar-collector-claw',
     name: 'AR Collector Claw',
     description: 'Automated invoice follow-ups and collections management for growing teams.',
     features: ['Automated Email Actions', 'Invoice Follow-up Triggers', 'Collections Pipeline Tracking'],
-    status: 'active',
+    status: 'paused',
     tasksToday: 8,
     lastRun: '1 hr ago',
-    requiredTier: 'Business', // Unlocked on Business and CFO Tier
+    requiredTier: 'Business',
   },
   {
     id: 'ap-claw',
     name: 'AP Claw',
     description: 'Vendor bill processing and 3-way matching synced with accounting integrations.',
     features: ['Vendor Bill Processing', '3-Way Matching', 'API & Accounting Sync'],
-    status: 'active',
+    status: 'paused',
     tasksToday: 5,
     lastRun: '30 mins ago',
-    requiredTier: 'Business', // Unlocked on Business and CFO Tier
+    requiredTier: 'Business',
   },
   {
     id: 'cfo-claw',
     name: 'CFO Claw',
     description: 'Advanced financial forecasting, runway insights, and multi-agent workflow triggers.',
     features: ['Financial Forecasting', 'Runway Insights', 'Custom Multi-Agent Workflows'],
-    status: 'active',
+    status: 'paused',
     tasksToday: 14,
     lastRun: '12 mins ago',
-    requiredTier: 'CFO Tier', // Exclusive to CFO Tier
+    requiredTier: 'CFO Tier',
   },
   {
     id: 'controller-claw',
     name: 'Controller Claw',
     description: 'Enterprise-grade anomaly detection, compliance checks, and audit-ready exports.',
     features: ['Anomaly Detection', 'Compliance Oversight', 'Audit-Ready Data Exports'],
-    status: 'action-needed',
+    status: 'paused',
     tasksToday: 3,
     lastRun: 'Just now',
-    requiredTier: 'CFO Tier', // Exclusive to CFO Tier
+    requiredTier: 'CFO Tier',
   },
 ];
 
-export default function ClawsPage() {
+export default function ClawsPage({ currentWorkspaceId }) {
   const [claws, setClaws] = useState(DEFAULT_CLAWS);
   const [userTier, setUserTier] = useState('Starter');
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
+  const [resolvedWorkspaceId, setResolvedWorkspaceId] = useState(null);
 
   useEffect(() => {
-    async function fetchUserData() {
+    async function fetchUserDataAndClaws() {
+      setLoading(true);
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          // Fetch user's active subscription tier from user_profiles table
-          const { data: profileData, error: profileError } = await supabase
-            .from('user_profiles')
-            .select('tier')
-            .eq('id', user.id)
-            .single();
+        if (!user) return;
 
-          if (profileError) {
-            console.error('Error fetching user tier:', profileError);
-          } else if (profileData && profileData.tier) {
+        // 1. Fetch User Tier
+        try {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .maybeSingle();
+
+          if (profileData && profileData.tier) {
             setUserTier(profileData.tier);
           }
+        } catch (pErr) {
+          console.warn('Profiles lookup fallback:', pErr);
+        }
 
-          // Fetch custom claw configurations if stored in DB
-          const { data: clawData, error: clawError } = await supabase
-            .from('claws_config')
+        // 2. Resolve Workspace ID (props -> localStorage -> Supabase default)
+        let activeWsId = currentWorkspaceId || localStorage.getItem('claw_active_workspace_id');
+
+        if (!activeWsId) {
+          const { data: wsData } = await supabase
+            .from('workspaces')
+            .select('id')
+            .eq('user_id', user.id)
+            .limit(1)
+            .maybeSingle();
+
+          if (wsData?.id) {
+            activeWsId = wsData.id;
+            localStorage.setItem('claw_active_workspace_id', wsData.id);
+          }
+        }
+
+        setResolvedWorkspaceId(activeWsId);
+
+        // 3. Fetch Claws status if workspace ID exists
+        if (activeWsId) {
+          const { data: dbClaws, error } = await supabase
+            .from('workspace_claws')
             .select('*')
-            .eq('user_id', user.id);
+            .eq('workspace_id', activeWsId);
 
-          if (!clawError && clawData && clawData.length > 0) {
-            setClaws((prevClaws) =>
-              prevClaws.map((defaultClaw) => {
-                const found = clawData.find((c) => c.id === defaultClaw.id);
-                if (found) {
-                  return {
-                    ...defaultClaw,
-                    status: found.status?.toLowerCase() === 'active' ? 'active' : 'idle',
-                    tasksToday: found.tasks_today ?? defaultClaw.tasksToday,
-                    lastRun: found.last_run || defaultClaw.lastRun,
-                  };
-                }
-                return defaultClaw;
+          if (!error && dbClaws && dbClaws.length > 0) {
+            setClaws(
+              DEFAULT_CLAWS.map((defaultClaw) => {
+                const found = dbClaws.find((c) => c.claw_id === defaultClaw.id);
+                return found
+                  ? {
+                      ...defaultClaw,
+                      status: found.status?.toLowerCase() === 'active' ? 'active' : 'paused',
+                      tasksToday: found.tasks_today ?? defaultClaw.tasksToday,
+                    }
+                  : defaultClaw;
               })
             );
           }
@@ -112,8 +134,39 @@ export default function ClawsPage() {
       }
     }
 
-    fetchUserData();
-  }, []);
+    fetchUserDataAndClaws();
+  }, [currentWorkspaceId]);
+
+  const handleToggleClawStatus = async (clawId, currentStatus) => {
+    const nextStatus = currentStatus === 'active' ? 'paused' : 'active';
+    const activeWsId = resolvedWorkspaceId || currentWorkspaceId || localStorage.getItem('claw_active_workspace_id');
+
+    // Optimistic UI update
+    setClaws((prevClaws) =>
+      prevClaws.map((c) => (c.id === clawId ? { ...c, status: nextStatus } : c))
+    );
+
+    if (activeWsId) {
+      const { error } = await supabase
+        .from('workspace_claws')
+        .upsert(
+          {
+            workspace_id: activeWsId,
+            claw_id: clawId,
+            status: nextStatus,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'workspace_id,claw_id' }
+        );
+
+      if (error) {
+        console.error('Failed to update workspace claw status in Supabase:', error);
+        setClaws((prevClaws) =>
+          prevClaws.map((c) => (c.id === clawId ? { ...c, status: currentStatus } : c))
+        );
+      }
+    }
+  };
 
   return (
     <div className="flex h-screen bg-[#090a0f] text-zinc-100 overflow-hidden font-sans">
@@ -152,6 +205,7 @@ export default function ClawsPage() {
               {claws.map((claw) => (
                 <AIClawCard
                   key={claw.id}
+                  id={claw.id}
                   name={claw.name}
                   description={claw.description}
                   features={claw.features}
@@ -159,6 +213,7 @@ export default function ClawsPage() {
                   tasksToday={claw.tasksToday}
                   requiredTier={claw.requiredTier}
                   userTier={userTier}
+                  onToggleStatus={() => handleToggleClawStatus(claw.id, claw.status)}
                 />
               ))}
             </div>

@@ -7,7 +7,8 @@ export async function logAuditEntry({
   status,
   previousState = null,
   newState,
-  confidenceScore = null
+  confidenceScore = null,
+  workspaceId = null
 }) {
   try {
     const logEntry = {
@@ -19,6 +20,11 @@ export async function logAuditEntry({
       execution_time_ms: 350,
       created_at: new Date().toISOString()
     };
+
+    // Safely attach workspace_id if passed from ReviewQueue
+    if (workspaceId) {
+      logEntry.workspace_id = workspaceId;
+    }
 
     const { data, error } = await supabase
       .from('claw_execution_logs')
@@ -33,6 +39,6 @@ export async function logAuditEntry({
     return { success: true, data };
   } catch (err) {
     console.error('Audit logger exception:', err);
-    return { success: false, error: err.message };
+    return { success: false, error: err?.message || 'Unknown error' };
   }
 }
