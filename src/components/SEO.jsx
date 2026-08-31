@@ -42,6 +42,31 @@ const SEO = ({ title, description, path = '' }) => {
 
     // Canonical Link
     setLinkTag('link[rel="canonical"]', fullUrl);
+
+    // Organization JSON-LD Schema Injection
+    let scriptTag = document.querySelector('#org-schema');
+    if (!scriptTag) {
+      scriptTag = document.createElement('script');
+      scriptTag.id = 'org-schema';
+      scriptTag.type = 'application/ld+json';
+      scriptTag.text = JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "ClawAI Stack",
+        "url": siteUrl,
+        "logo": `${siteUrl}/logo.png`,
+        "sameAs": [
+          "https://www.linkedin.com/company/clawai-stack/"
+        ],
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "Customer Support",
+          "email": "support@clawaistack.com"
+        },
+        "description": "Autonomous AI finance platform specializing in bookkeeping, cash forecasting, AP matching, and AR recovery."
+      });
+      document.head.appendChild(scriptTag);
+    }
   }, [title, description, path, fullUrl, fullTitle]);
 
   return null;
