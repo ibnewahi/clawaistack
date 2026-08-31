@@ -1,5 +1,6 @@
-import { Zap, ShieldCheck, ArrowRight } from 'lucide-react';
+import { ShieldCheck, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { Logo } from '../../components/Logo';
 
 export default function LandingFooter() {
   return (
@@ -38,14 +39,9 @@ export default function LandingFooter() {
             <Link 
               to="/" 
               onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-              className="inline-flex items-center gap-3 cursor-pointer group"
+              className="inline-flex items-center cursor-pointer group"
             >
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/30 flex items-center justify-center text-emerald-400 group-hover:border-emerald-500/60 transition shadow-lg shadow-emerald-500/10">
-                <Zap className="h-4 w-4 fill-emerald-400/20" />
-              </div>
-              <span className="text-lg font-extrabold text-white tracking-tight group-hover:text-emerald-400 transition">
-                ClawAI <span className="text-emerald-400">Stack</span>
-              </span>
+              <Logo className="h-8 w-auto" />
             </Link>
             
             <p className="text-xs text-zinc-400 leading-relaxed max-w-sm">

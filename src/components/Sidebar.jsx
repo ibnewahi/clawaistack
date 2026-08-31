@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Link } from 'react-router-dom';
-import { LayoutDashboard, Bot, Cpu, FileText, ShieldCheck, Settings, CreditCard, LogOut, ChevronLeft, ChevronRight, Zap, User, ChevronUp } from 'lucide-react';
+import { LayoutDashboard, Bot, Cpu, FileText, ShieldCheck, Settings, CreditCard, LogOut, ChevronLeft, ChevronRight, User, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { Logo } from './Logo';
 
 export default function Sidebar({ collapsed, setCollapsed, onSignOut }) {
   const [userEmail, setUserEmail] = useState('user@company.com');
@@ -43,17 +44,15 @@ export default function Sidebar({ collapsed, setCollapsed, onSignOut }) {
   return (
     <aside className={`border-r border-zinc-800/80 bg-[#13151b] flex flex-col justify-between transition-all duration-300 relative ${collapsed ? 'w-20' : 'w-64'}`}>
       <div>
-        {/* Brand Header: Logo and Name now route to the Dashboard (to="/dashboard") */}
+        {/* Brand Header: Logo now uses the clean Logo component */}
         <div className="flex items-center justify-between px-5 py-6 border-b border-zinc-800/80">
           <Link to="/dashboard" className="flex items-center gap-3 overflow-hidden group cursor-pointer">
-            <div className="h-9 w-9 shrink-0 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/10 group-hover:border-emerald-500/60 transition">
-              <Zap className="h-5 w-5 fill-emerald-400/20" />
-            </div>
-            {!collapsed && (
-              <div className="flex flex-col truncate">
-                <span className="text-sm font-bold text-white tracking-tight group-hover:text-emerald-400 transition">ClawAI <span className="text-emerald-400">Stack</span></span>
-                <span className="text-[10px] text-zinc-400 font-medium tracking-wide uppercase">Finance AI</span>
+            {collapsed ? (
+              <div className="h-9 w-9 shrink-0 flex items-center justify-center text-emerald-400">
+                <img src="/logo.png" alt="Logo" className="h-7 w-auto object-contain" />
               </div>
+            ) : (
+              <Logo className="h-8 w-auto" />
             )}
           </Link>
           

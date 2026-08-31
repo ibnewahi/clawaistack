@@ -11,7 +11,6 @@ import {
   Building2,
   ArrowRight,
   Check,
-  Zap,
   Activity,
   CheckCircle2,
   Terminal,
@@ -22,6 +21,7 @@ import RoiCalculator from '../components/landing/RoiCalculator';
 import AgentTerminal from '../components/landing/AgentTerminal';
 import Testimonials from '../components/landing/Testimonials';
 import FAQ from '../components/landing/FAQ';
+import { Logo } from '../components/Logo'; // <-- Imported your Logo component
 
 const miniChartData = [
   { month: 'Jan', cash: 140 },
@@ -128,19 +128,9 @@ export default function LandingPage() {
       <nav className="sticky top-0 z-50 bg-[#090a0f]/85 backdrop-blur-xl border-b border-zinc-800/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           
-          {/* Clickable Top Logo */}
+          {/* Vector Logo Component Integration */}
           <Link to="/" className="flex items-center gap-3 cursor-pointer group">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/10 group-hover:border-emerald-500/60 transition">
-              <Zap className="h-5 w-5 fill-emerald-400/20" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-base font-extrabold text-white tracking-tight">
-                ClawAI <span className="text-emerald-400">Stack</span>
-              </span>
-              <span className="text-[10px] text-zinc-400 font-medium tracking-wider uppercase">
-                Finance AI
-              </span>
-            </div>
+            <Logo className="h-9 w-auto" />
           </Link>
 
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-zinc-300">
