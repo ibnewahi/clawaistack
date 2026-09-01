@@ -49,22 +49,86 @@
       rel="stylesheet"
     />
 
-    <!-- Structured Data (JSON-LD for Software Application) -->
+    <!-- Unified Structured Data (JSON-LD Graph for Organization, SoftwareApplication, and FAQPage) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "ClawAI Stack",
-      "operatingSystem": "All",
-      "applicationCategory": "BusinessApplication",
-      "description": "Streamline your corporate accounting, multi-agent workflows, and financial operations with an autonomous AI partner.",
-      "url": "https://clawaistack.com/",
-      "image": "https://clawaistack.com/og-image.png",
-      "author": {
-        "@type": "Organization",
-        "name": "Claw AI Stack",
-        "logo": "https://clawaistack.com/logo.png"
-      }
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://clawaistack.com/#organization",
+          "name": "ClawAI Stack",
+          "url": "https://clawaistack.com/",
+          "logo": "https://clawaistack.com/logo.png",
+          "sameAs": [
+            "https://www.linkedin.com/company/clawai-stack/"
+          ],
+          "contactPoint": {
+            "@type": "ContactPoint",
+            "contactType": "Customer Support",
+            "email": "support@clawaistack.com"
+          },
+          "description": "Autonomous AI finance platform specializing in bookkeeping, cash forecasting, AP matching, and AR recovery."
+        },
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://clawaistack.com/#software",
+          "name": "ClawAI Stack",
+          "operatingSystem": "All",
+          "applicationCategory": "BusinessApplication",
+          "description": "Streamline your corporate accounting, multi-agent workflows, and financial operations with an autonomous AI partner.",
+          "url": "https://clawaistack.com/",
+          "image": "https://clawaistack.com/og-image.png",
+          "author": {
+            "@id": "https://clawaistack.com/#organization"
+          }
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "How secure is my financial and bank data with ClawAI Stack?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "We use bank-grade 256-bit encryption for all data in transit and at rest. Read-only bank integrations are securely handled via top-tier providers like Plaid, ensuring our AI claws can reconcile ledgers without ever storing or having access to your credentials or fund transfer permissions."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Which accounting systems and ERPs do the AI claws integrate with?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "ClawAI Stack features native, bi-directional synchronization with popular financial platforms including Odoo ERP, Zoho Books, QuickBooks Online, Xero, and Stripe. Updates made by the AI claws are instantly synced to your ledger with complete audit trails."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Can I review transactions before the AI executes automated actions?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes! You have full control over your automation settings. You can set thresholds so that routine workflows (like categorization and gentle AR follow-ups) run completely autonomously, while major payments or anomaly flags require human-in-the-loop sign-off from your controller or CFO."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How long does it take to set up and connect my first AI claw?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Setup typically takes under 10 minutes. Once you link your preferred accounting software or bank feed, your initial AI claws begin analyzing historical ledger data and flagging immediate cost-saving opportunities almost instantly."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Are the audit logs compliant with standard tax and accounting regulations?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Absolutely. Every action taken by the AI generates a verifiable, immutable double-entry audit log complete with timestamping, line-item references, and confidence scores designed to make tax season and audits seamless."
+              }
+            }
+          ]
+        }
+      ]
     }
     </script>
   </head>
