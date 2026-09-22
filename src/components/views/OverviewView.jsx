@@ -34,6 +34,14 @@ import {
 } from 'recharts';
 import { supabase } from '../../lib/supabase';
 
+const QUICK_TRIGGER_CLAW_KEYS = {
+  Bookkeeper: 'bookkeeper-claw',
+  AR: 'ar-collector-claw',
+  AP: 'ap-claw',
+  CFO: 'cfo-claw',
+  Controller: 'controller-claw',
+};
+
 // Multi-horizon dataset projections computed for financial planning
 const horizonDatasets = {
   Monthly: [
@@ -228,27 +236,11 @@ export default function OverviewView({
     setOpenMenuId(openMenuId === id ? null : id);
   };
 
-  const triggerAgentWithEffects = async (agentName) => {
-    handleTriggerAgent(agentName);
-    
-    try {
-      if (supabase && selectedWorkspaceId) {
-        await supabase.from('claw_execution_logs').insert([
-          {
-            claw_id: `${agentName.toLowerCase()}-claw`,
-            task_name: `Manual ${agentName} Run`,
-            status: 'Success',
-            accuracy_score: 100,
-            workspace_id: selectedWorkspaceId,
-            created_at: new Date().toISOString()
-          }
-        ]);
-      }
-    } catch (err) {
-      console.error('Error logging workspace agent trigger:', err);
-    }
+  const triggerAgentWithEffects = async (canonicalClawKey) => {
+    const result = await handleTriggerAgent(canonicalClawKey);
+    if (!result?.success) return;
 
-    toast.success(`${agentName} agent triggered successfully!`, {
+    toast.success(`${canonicalClawKey} agent triggered successfully!`, {
       description: `Executing real-time workflow for ${selectedCompany}...`
     });
 
@@ -279,10 +271,10 @@ export default function OverviewView({
         {/* Quick Agent Triggers */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider mr-1">Trigger Agent:</span>
-          {['Bookkeeper', 'AR', 'AP', 'CFO', 'Controller'].map((agent) => (
+          {Object.entries(QUICK_TRIGGER_CLAW_KEYS).map(([agent, canonicalClawKey]) => (
             <button
               key={agent}
-              onClick={() => triggerAgentWithEffects(agent)}
+              onClick={() => triggerAgentWithEffects(canonicalClawKey)}
               className="px-2.5 py-1.5 bg-[#13151b] border border-zinc-800 hover:border-emerald-500/50 hover:text-emerald-400 text-zinc-300 text-[11px] font-medium rounded-lg transition flex items-center gap-1 cursor-pointer shadow-sm hover:shadow-emerald-500/10"
             >
               <span className="text-emerald-400 text-[10px]">▷</span>
@@ -585,7 +577,7 @@ export default function OverviewView({
                         <div className="absolute right-0 mt-2 w-48 bg-[#13151b] border border-zinc-800 rounded-xl shadow-2xl z-20 py-1.5 animate-in fade-in zoom-in-95 duration-100">
                           <button
                             onClick={() => {
-                              triggerAgentWithEffects(claw.name);
+                              triggerAgentWithEffects(claw.key);
                               setOpenMenuId(null);
                             }}
                             className="w-full px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800/70 hover:text-emerald-400 flex items-center gap-2 transition cursor-pointer"

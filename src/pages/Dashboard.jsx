@@ -175,89 +175,65 @@ export default function Dashboard() {
   };
 
   // Dynamic Handler to invoke Supabase Edge Function with instant optimistic updates
-  const handleTriggerAgent = async (clawIdentifier, customPrompt = '') => {
-    showNotification(`Triggering ${clawIdentifier} execution...`);
+  const handleTriggerAgent = async (canonicalClawKey) => {
+    if (!selectedWorkspaceId) {
+      showNotification('Select a workspace before running a Claw.');
+      return null;
+    }
+
+    showNotification(`Triggering ${canonicalClawKey} execution...`);
     setIsExecutingClaw(true);
     try {
-      let token = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (supabase) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.access_token) token = session.access_token;
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        throw new Error('You must be signed in to run a Claw.');
       }
-
-      const defaultPrompts = {
-        'bookkeeper-claw': 'You are an expert Bookkeeper AI. Reconcile transaction logs. An unverified bill (INV-8890 for $12,500) requires 3-way AP matching. Return valid JSON containing "requires_ap_matching": true.',
-        'ar-collector-claw': 'You are an AR Collection Manager. Analyze aging invoices, generate reminder workflows, and draft escalation notices.',
-        'ap-claw': 'You are an AP Matching Agent. Perform 3-way matching on bills, check line items, and queue payouts for approval. Return valid JSON containing "requires_controller_review": true.',
-        'cfo-claw': 'You are an Autonomous CFO. Calculate real-time cash runway, burn rates, EBITDA metrics, and liquidity projections.',
-        'controller-claw': 'You are a Corporate Controller. Audit ledgers for duplicate payouts, tax anomalies, and compliance gaps.'
-      };
-
-      const resolvedKey = clawIdentifier.includes('-claw') ? clawIdentifier : `${clawIdentifier.toLowerCase()}-claw`;
-
-      const payloadData = {
-        triggerSource: 'Manual Agent UI Trigger',
-        company: selectedCompany,
-        workspaceId: selectedWorkspaceId,
-        targetAudit: resolvedKey,
-        invoiceId: 'INV-8890',
-        amount: 12500,
-        notes: 'Unverified vendor bill requiring 3-way matching',
-        requires_ap_matching: true
-      };
 
       if (supabase) {
         const { data, error } = await supabase.functions.invoke('execute-claw', {
-          body: { 
-            clawKey: resolvedKey, 
-            version: '1.0', 
-            systemPrompt: customPrompt || defaultPrompts[resolvedKey] || 'Execute autonomous finance audit task.', 
-            rulesConfig: {}, 
-            payload: payloadData
+          body: {
+            workspaceId: selectedWorkspaceId,
+            clawKey: canonicalClawKey,
+            payload: {}
           },
           headers: {
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${accessToken}`
           }
         });
 
         if (error) throw error;
 
         setExecutionResult(data);
-        showNotification(`${resolvedKey} executed successfully!`);
+        showNotification(`${canonicalClawKey} executed successfully!`);
 
         if (data && data.success) {
-          const newLogEntry = data.logEntry || {
-            id: `opt-${Date.now()}`,
-            claw_id: resolvedKey,
-            task_name: `${resolvedKey.replace('-claw', '').toUpperCase()} Manual Run`,
-            status: 'Success',
-            accuracy_score: 100,
-            created_at: new Date().toISOString()
-          };
-
-          setDbLogs((prev) => [newLogEntry, ...prev.filter((l) => l.id !== newLogEntry.id)]);
-
           setActiveModalData({
-            clawKey: data.clawKey || resolvedKey,
-            data: data.result || data
+            clawKey: data.clawKey || canonicalClawKey,
+            data: {
+              executionId: data.executionId,
+              model: data.model,
+              duration: data.duration,
+              result: data.result
+            }
           });
           setModalOpen(true);
         }
+
+        return data;
       }
     } catch (err) {
-      console.error(`Execution error for ${clawIdentifier}:`, err);
+      console.error(`Execution error for ${canonicalClawKey}:`, err);
       setExecutionResult({ error: err.message });
-      showNotification(`Failed to run ${clawIdentifier}: ${err.message}`);
+      showNotification(`Failed to run ${canonicalClawKey}: ${err.message}`);
+      return null;
     } finally {
       setIsExecutingClaw(false);
     }
   };
 
   const handleExecuteClawAI = () => {
-    handleTriggerAgent(
-      'bookkeeper-claw', 
-      'You are an expert Bookkeeper AI. Reconcile transactions and process vendor bill INV-8890. Return JSON containing "requires_ap_matching": true.'
-    );
+    handleTriggerAgent('bookkeeper-claw');
   };
 
   const [clawsList, setClawsList] = useState([
@@ -308,15 +284,7 @@ export default function Dashboard() {
     }
   };
 
-  const fallbackLogs = [
-    { id: '1', claw_id: 'bookkeeper-claw', task_name: 'Bank Feed Reconciliation', status: 'Success', accuracy_score: 100, created_at: new Date().toISOString() },
-    { id: '2', claw_id: 'ar-collector-claw', task_name: 'Automated Follow-up Email Sent', status: 'Success', accuracy_score: 100, created_at: new Date(Date.now() - 14 * 60000).toISOString() },
-    { id: '3', claw_id: 'ap-claw', task_name: 'Vendor Bill 3-Way Match Verified', status: 'Success', accuracy_score: 100, created_at: new Date(Date.now() - 60 * 60000).toISOString() },
-    { id: '4', claw_id: 'cfo-claw', task_name: 'Runway & Cash Flow Forecast Updated', status: 'Success', accuracy_score: 100, created_at: new Date(Date.now() - 180 * 60000).toISOString() },
-    { id: '5', claw_id: 'controller-claw', task_name: 'Anomaly Detection Audit Completed', status: 'Success', accuracy_score: 100, created_at: new Date(Date.now() - 12 * 60000).toISOString() },
-  ];
-
-  const activeLogSource = dbLogs.length > 0 ? dbLogs : fallbackLogs;
+  const activeLogSource = dbLogs;
 
   const mappedLogs = activeLogSource.map((log) => ({
     id: log.id,
@@ -324,7 +292,7 @@ export default function Dashboard() {
     claw: log.claw_id || 'controller-claw',
     desc: log.task_name || 'Execution Run',
     time: formatRelativeTime(log.created_at),
-    accuracy: `${log.accuracy_score || 100}%`
+    accuracy: log.accuracy_score == null ? '—' : `${log.accuracy_score}%`
   }));
 
   const filteredLogs = logFilter === 'All' 
@@ -412,7 +380,6 @@ export default function Dashboard() {
                 clawsList={clawsList}
                 setClawsList={setClawsList}
                 toggleClawStatus={toggleClawStatus}
-                handleTriggerAgent={handleTriggerAgent}
                 showNotification={showNotification}
               />
             } 

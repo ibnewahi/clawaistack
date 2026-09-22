@@ -20,14 +20,14 @@ export default function AgentConsole({ selectedWorkspaceId }) {
     setActiveOutput(null);
 
     try {
+      if (!selectedWorkspaceId) {
+        throw new Error("Select a workspace before running a Claw.");
+      }
+
       const response = await executeClawAgent({
-        clawKey,
         workspaceId: selectedWorkspaceId,
-        payload: {
-          triggerSource: `Dashboard UI Manual Trigger (${clawKey})`,
-          workspaceId: selectedWorkspaceId,
-          timestamp: new Date().toISOString(),
-        },
+        clawKey,
+        payload: {},
       });
 
       setActiveOutput(response);
@@ -72,8 +72,8 @@ export default function AgentConsole({ selectedWorkspaceId }) {
       {activeOutput && (
         <div style={{ background: "#f4f4f5", padding: "16px", borderRadius: "8px", marginBottom: "24px" }}>
           <h4>Latest Agent Output ({activeOutput.clawKey})</h4>
-          <p><strong>Active Model:</strong> {activeOutput.activeModelUsed}</p>
-          <p><strong>Execution Time:</strong> {activeOutput.executionTimeMs} ms</p>
+          <p><strong>Active Model:</strong> {activeOutput.model}</p>
+          <p><strong>Execution Time:</strong> {activeOutput.duration} ms</p>
           <pre style={{ background: "#e4e4e7", padding: "12px", borderRadius: "4px", fontSize: "12px" }}>
             {JSON.stringify(activeOutput.result, null, 2)}
           </pre>

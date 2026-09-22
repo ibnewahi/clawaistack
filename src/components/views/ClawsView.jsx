@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cpu, Zap, Play, Pause, Plus, Lock, ChevronRight, Sparkles } from 'lucide-react';
-import { compileClawPayload, executeClawFunction } from "../../lib/sopEngine";
-import { runAgentAutonomousTask } from "../../lib/agentDispatcher";
+import { executeClawFunction } from "../../lib/sopEngine";
 import { supabase } from "../../lib/supabase";
 
 const TIER_LEVELS = {
@@ -26,7 +25,6 @@ export default function ClawsView({
   clawsList = [], 
   setClawsList = () => {},
   toggleClawStatus, 
-  handleTriggerAgent, 
   showNotification,
   onUpgradeClick
 }) {
@@ -213,52 +211,22 @@ export default function ClawsView({
 
   const handleRunOverride = async (clawKey, clawName) => {
     try {
-      if (showNotification) {
-        showNotification(`Fetching active integrations & compiling SOP for ${clawName}...`);
-      }
-
-      let integrationContext = {};
-      if (supabase) {
-        const { data: activeIntegrations, error: intError } = await supabase
-          .from('integrations')
-          .select('integration_key, config_data, is_connected')
-          .eq('is_connected', true);
-
-        if (intError) {
-          console.warn('Could not fetch live integrations:', intError.message);
-        } else if (activeIntegrations) {
-          activeIntegrations.forEach(item => {
-            integrationContext[item.integration_key] = item.config_data;
-          });
-        }
+      if (!activeWsId || activeWsId === 'undefined' || activeWsId === 'null') {
+        throw new Error('Select a workspace before running a Claw.');
       }
 
       if (showNotification) {
-        showNotification(`Compiling SOP & invoking ${clawName} with live integration context...`);
+        showNotification(`Invoking ${clawName}...`);
       }
 
-      const payload = await compileClawPayload(clawKey, {
-        triggerSource: 'Manual Dashboard Override',
-        company: selectedCompany,
-        timestamp: new Date().toISOString(),
-        integrations: integrationContext
-      });
-
-      const result = await executeClawFunction(payload);
-
-      await runAgentAutonomousTask({
-        agentName: clawName,
-        taskType: `Manual Override Execution (${clawKey})`,
-        payload: { company: selectedCompany, response: result },
-        confidenceScore: 0.98
+      await executeClawFunction({
+        workspaceId: activeWsId,
+        clawKey,
+        payload: {}
       });
 
       if (showNotification) {
-        showNotification(`Successfully executed & logged ${clawName}!`);
-      }
-
-      if (handleTriggerAgent) {
-        handleTriggerAgent(clawName, result);
+        showNotification(`Successfully executed ${clawName}!`);
       }
     } catch (err) {
       console.error(`Execution failed for ${clawKey}:`, err);

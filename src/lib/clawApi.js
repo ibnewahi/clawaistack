@@ -3,9 +3,9 @@ import { supabase } from "./supabase";
 /**
  * Triggers an agent task via the execute-claw Edge Function
  */
-export async function executeClawAgent({ clawKey, systemPrompt, payload }) {
+export async function executeClawAgent({ workspaceId, clawKey, payload = {} }) {
   const { data, error } = await supabase.functions.invoke("execute-claw", {
-    body: { clawKey, systemPrompt, payload },
+    body: { workspaceId, clawKey, payload },
   });
 
   if (error) {

@@ -6,125 +6,419 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EXECUTE_PERMISSION = "ai.execute";
+const TASK_TYPE = "CLAW_ANALYSIS";
+
+type ExecuteClawRequest = {
+  workspaceId?: unknown;
+  clawKey?: unknown;
+  payload?: unknown;
+};
+
+type CanonicalClaw = {
+  id: string;
+  claw_key: string;
+  is_enabled: boolean;
+  required_permission: string;
+};
+
+type TrustedSop = {
+  id: string;
+  version: string;
+  system_prompt: string;
+  rules_config: unknown;
+};
+
+const jsonResponse = (body: Record<string, unknown>, status: number) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+const safeInputContext = (payload: Record<string, unknown>) => ({
+  request_source: "browser",
+  payload_present: Object.keys(payload).length > 0,
+  payload_key_count: Object.keys(payload).length,
+});
+
+const safeFailureSummary = (category: string) => ({
+  outcome: "failed",
+  category,
+});
+
+const normalizeForDisclosureCheck = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/\\(["\\/])/g, "$1")
+    .replace(/\\[nrt]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const containsTrustedConfigurationDisclosure = (
+  result: unknown,
+  systemPrompt: string,
+  rulesConfig: unknown,
+) => {
+  const serializedResult = JSON.stringify(result);
+  if (!serializedResult) return false;
+
+  const trustedMaterials = [
+    systemPrompt,
+    rulesConfig && typeof rulesConfig === "object" ? JSON.stringify(rulesConfig) : "",
+  ];
+  const normalizedResult = normalizeForDisclosureCheck(serializedResult);
+
+  return trustedMaterials.some((material) => {
+    const normalizedMaterial = normalizeForDisclosureCheck(material);
+    if (!normalizedMaterial) return false;
+    if (normalizedResult.includes(normalizedMaterial)) return true;
+
+    const substantialLength = Math.max(80, Math.ceil(normalizedMaterial.length * 0.5));
+    if (normalizedMaterial.length < substantialLength) return false;
+
+    for (let start = 0; start <= normalizedMaterial.length - substantialLength; start += Math.floor(substantialLength / 2)) {
+      if (normalizedResult.includes(normalizedMaterial.slice(start, start + substantialLength))) {
+        return true;
+      }
+    }
+    return false;
+  });
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
+  }
+
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) {
+    return jsonResponse({ success: false, error: "Unauthorized" }, 401);
+  }
+
+  const bearerMatch = /^Bearer\s+(.+)$/i.exec(authHeader);
+  const accessToken = bearerMatch?.[1]?.trim();
+  if (!accessToken) {
+    return jsonResponse({ success: false, error: "Unauthorized" }, 401);
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error("[Configuration Error]: Supabase Auth configuration is unavailable.");
+    return jsonResponse({ success: false, error: "Internal server error" }, 500);
+  }
+
+  // Legacy gateway JWT verification remains disabled. This user-scoped client both
+  // verifies the bearer token and evaluates authorization in the caller's JWT context.
+  const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  });
+  const { data: authData, error: authError } = await supabaseUser.auth.getUser(accessToken);
+  const authenticatedUser = authData.user;
+  if (authError || !authenticatedUser) {
+    return jsonResponse({ success: false, error: "Unauthorized" }, 401);
+  }
+  const authenticatedUserId = authenticatedUser.id;
+
+  let executionId: string | null = null;
+  let activeModel: string | null = null;
+  let supabaseAdmin: ReturnType<typeof createClient> | null = null;
   const startTime = Date.now();
 
-  try {
-    const { clawKey, version, systemPrompt, rulesConfig, payload } = await req.json();
+  const markExecutionFailed = async (category: string) => {
+    if (!executionId || !supabaseAdmin) return;
 
-    if (!clawKey || !systemPrompt) {
-      return new Response(
-        JSON.stringify({ error: "Missing required payload attributes" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    const { error } = await supabaseAdmin
+      .from("ai_executions")
+      .update({
+        status: "FAILED",
+        completed_at: new Date().toISOString(),
+        model_provider: activeModel ? "groq" : null,
+        model_name: activeModel,
+        output_summary: safeFailureSummary(category),
+      })
+      .eq("id", executionId);
+
+    if (error) {
+      console.error("[AI Execution Failure Update Error]:", error.message);
     }
+  };
+
+  const writeLegacyLog = async (clawKey: string, succeeded: boolean) => {
+    try {
+      if (!supabaseAdmin) return;
+
+      const { error } = await supabaseAdmin.from("claw_execution_logs").insert({
+        claw_id: clawKey,
+        task_name: TASK_TYPE,
+        status: succeeded ? "Success" : "Failed",
+        accuracy_score: null,
+        execution_time_ms: Date.now() - startTime,
+      });
+
+      if (error) {
+        console.error("[Legacy Execution Log Error]:", error.message);
+      }
+    } catch (error) {
+      console.error("[Legacy Execution Log Exception]:", error instanceof Error ? error.message : "unknown error");
+    }
+  };
+
+  try {
+    let requestBody: Record<string, unknown>;
+    try {
+      const parsedBody = await req.json();
+      if (!parsedBody || typeof parsedBody !== "object" || Array.isArray(parsedBody)) {
+        return jsonResponse({ error: "Malformed request body" }, 400);
+      }
+      requestBody = parsedBody as Record<string, unknown>;
+    } catch {
+      return jsonResponse({ error: "Malformed request body" }, 400);
+    }
+
+    // The execution request has a deliberately narrow contract. Trusted prompts,
+    // rules, tenant identity, authorization, and approval state are server-derived.
+    const allowedFields = new Set(["workspaceId", "clawKey", "payload"]);
+    if (Object.keys(requestBody).some((field) => !allowedFields.has(field))) {
+      return jsonResponse({ error: "Unsupported request field" }, 400);
+    }
+
+    const { workspaceId, clawKey, payload } = requestBody as ExecuteClawRequest;
+    if (typeof workspaceId !== "string" || !UUID_PATTERN.test(workspaceId)) {
+      return jsonResponse({ error: "Invalid workspaceId" }, 400);
+    }
+    if (typeof clawKey !== "string" || !clawKey.trim()) {
+      return jsonResponse({ error: "Invalid clawKey" }, 400);
+    }
+    if (payload !== undefined && (!payload || typeof payload !== "object" || Array.isArray(payload))) {
+      return jsonResponse({ error: "Invalid payload" }, 400);
+    }
+    const payloadData = (payload ?? {}) as Record<string, unknown>;
+    const requestedClawKey = clawKey.trim();
+
+    // This RPC runs with the caller's bearer token, so auth.uid() is the verified user.
+    const { data: permitted, error: permissionError } = await supabaseUser.rpc(
+      "has_workspace_permission",
+      { p_workspace_id: workspaceId, p_permission_key: EXECUTE_PERMISSION },
+    );
+    if (permissionError) {
+      console.error("[Workspace Permission Check Error]:", permissionError.message);
+      return jsonResponse({ error: "Internal server error" }, 500);
+    }
+    if (permitted !== true) {
+      return jsonResponse({ error: "Forbidden" }, 403);
+    }
+
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseServiceKey) {
+      console.error("[Configuration Error]: Supabase server configuration is unavailable.");
+      return jsonResponse({ error: "Internal server error" }, 500);
+    }
+    // This client is used only after caller authentication and authorization succeed.
+    supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { data: workspace, error: workspaceError } = await supabaseAdmin
+      .from("workspaces")
+      .select("id, organization_id")
+      .eq("id", workspaceId)
+      .maybeSingle();
+    if (workspaceError || !workspace?.organization_id) {
+      console.error("[Trusted Workspace Resolution Error]:", workspaceError?.message ?? "missing organization");
+      return jsonResponse({ error: "Internal server error" }, 500);
+    }
+
+    const { data: clawRows, error: clawError } = await supabaseAdmin
+      .from("claw_registry")
+      .select("id, claw_key, is_enabled, required_permission")
+      .eq("claw_key", requestedClawKey)
+      .limit(2);
+    if (clawError) {
+      console.error("[Canonical Claw Resolution Error]:", clawError.message);
+      return jsonResponse({ error: "Internal server error" }, 500);
+    }
+    if (!clawRows || clawRows.length === 0) {
+      return jsonResponse({ error: "Claw not found" }, 404);
+    }
+    if (clawRows.length !== 1) {
+      return jsonResponse({ error: "Canonical configuration conflict" }, 409);
+    }
+    const canonicalClaw = clawRows[0] as CanonicalClaw;
+    if (!canonicalClaw.is_enabled || canonicalClaw.required_permission !== EXECUTE_PERMISSION) {
+      return jsonResponse({ error: "Claw is not available" }, 409);
+    }
+
+    const { data: workspaceClawRows, error: workspaceClawError } = await supabaseAdmin
+      .from("workspace_claws")
+      .select("status")
+      .eq("workspace_id", workspaceId)
+      .eq("claw_id", canonicalClaw.claw_key)
+      .limit(2);
+    if (workspaceClawError) {
+      console.error("[Workspace Claw Resolution Error]:", workspaceClawError.message);
+      return jsonResponse({ error: "Internal server error" }, 500);
+    }
+    if (
+      !workspaceClawRows ||
+      workspaceClawRows.length !== 1 ||
+      typeof workspaceClawRows[0].status !== "string" ||
+      workspaceClawRows[0].status.toLowerCase() !== "active"
+    ) {
+      return jsonResponse({ error: "Claw is not enabled for this workspace" }, 409);
+    }
+
+    const { data: sopRows, error: sopError } = await supabaseAdmin
+      .from("claw_sop_versions")
+      .select("id, version, system_prompt, rules_config")
+      .eq("claw_id", canonicalClaw.id)
+      .eq("status", "ACTIVE")
+      .limit(2);
+    if (sopError) {
+      console.error("[Trusted SOP Resolution Error]:", sopError.message);
+      return jsonResponse({ error: "Internal server error" }, 500);
+    }
+    if (!sopRows || sopRows.length !== 1) {
+      return jsonResponse({ error: "Trusted SOP configuration conflict" }, 409);
+    }
+    const trustedSop = sopRows[0] as TrustedSop;
+    if (!trustedSop.system_prompt || typeof trustedSop.system_prompt !== "string") {
+      return jsonResponse({ error: "Trusted SOP configuration conflict" }, 409);
+    }
+
+    const { data: execution, error: executionError } = await supabaseAdmin
+      .from("ai_executions")
+      .insert({
+        organization_id: workspace.organization_id,
+        workspace_id: workspace.id,
+        initiated_by_user_id: authenticatedUserId,
+        claw_key: canonicalClaw.claw_key,
+        claw_sop_version_id: trustedSop.id,
+        task_type: TASK_TYPE,
+        status: "STARTED",
+        input_context: safeInputContext(payloadData),
+      })
+      .select("id")
+      .single();
+    if (executionError || !execution?.id) {
+      console.error("[AI Execution Creation Error]:", executionError?.message ?? "missing execution id");
+      return jsonResponse({ error: "Internal server error" }, 500);
+    }
+    executionId = execution.id;
 
     const apiKey = Deno.env.get("GROQ_API_KEY");
     if (!apiKey) {
-      throw new Error("Server misconfiguration: GROQ_API_KEY is missing.");
+      await markExecutionFailed("server_configuration");
+      return jsonResponse({ error: "Internal server error" }, 500);
     }
 
-    // Query active text/chat models, explicitly excluding audio models like whisper
-    let activeModel = "llama-3.3-70b-versatile";
+    activeModel = "llama-3.3-70b-versatile";
     try {
       const modelsRes = await fetch("https://api.groq.com/openai/v1/models", {
-        headers: { "Authorization": `Bearer ${apiKey}` },
+        headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (modelsRes.ok) {
         const modelsData = await modelsRes.json();
         const chatModels = (modelsData.data || [])
-          .map((m: any) => m.id)
+          .map((model: { id: string }) => model.id)
           .filter((id: string) => !id.includes("whisper") && !id.includes("guard") && !id.includes("vision"));
-
-        const preferred = chatModels.find((id: string) => 
-          id.includes("llama-3.3") || id.includes("llama-3.1") || id.includes("mixtral") || id.includes("gemma")
+        const preferred = chatModels.find((id: string) =>
+          id.includes("llama-3.3") || id.includes("llama-3.1") || id.includes("mixtral") || id.includes("gemma"),
         );
-
-        if (preferred) {
-          activeModel = preferred;
-        } else if (chatModels.length > 0) {
-          activeModel = chatModels[0];
-        }
+        if (preferred) activeModel = preferred;
+        else if (chatModels.length > 0) activeModel = chatModels[0];
       }
-    } catch (e) {
-      console.warn("Model list fetch failed, falling back to default:", e);
+    } catch (error) {
+      console.warn("Model list fetch failed; using default model.", error);
     }
 
-    const safeSystemPrompt = systemPrompt.toLowerCase().includes("json")
-      ? systemPrompt
-      : `${systemPrompt}\n\nRespond strictly in valid JSON format.`;
+    const trustedRules = trustedSop.rules_config && typeof trustedSop.rules_config === "object"
+      ? `\n\nTrusted rules configuration: ${JSON.stringify(trustedSop.rules_config)}`
+      : "";
+    const systemInstruction = trustedSop.system_prompt.toLowerCase().includes("json")
+      ? `${trustedSop.system_prompt}${trustedRules}`
+      : `${trustedSop.system_prompt}${trustedRules}\n\nRespond strictly in valid JSON format.`;
 
-    // Call Groq Chat Completions API
     const llmResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: activeModel,
         messages: [
-          { role: "system", content: safeSystemPrompt },
-          { role: "user", content: `Execute task for ${clawKey}. Input payload: ${JSON.stringify(payload || {})}` },
+          { role: "system", content: systemInstruction },
+          {
+            role: "user",
+            content: `Run analysis for canonical Claw ${canonicalClaw.claw_key}. Untrusted task context: ${JSON.stringify(payloadData)}`,
+          },
         ],
         temperature: 0.1,
-        response_format: { type: "json_object" }
+        response_format: { type: "json_object" },
       }),
     });
-
     const llmData = await llmResponse.json();
-    const executionTimeMs = Date.now() - startTime;
-    const isSuccess = llmResponse.ok && !llmData.error;
-
-    if (!isSuccess) {
-      console.error("[Groq API Error Details]:", JSON.stringify(llmData));
+    const duration = Date.now() - startTime;
+    if (!llmResponse.ok || llmData.error) {
+      console.error("[Groq API Error]:", llmResponse.status);
+      await markExecutionFailed("provider_failure");
+      await writeLegacyLog(canonicalClaw.claw_key, false);
+      return jsonResponse({ success: false, error: "AI provider request failed" }, 502);
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Record execution log in database
-    const { error: dbError } = await supabaseAdmin.from("claw_execution_logs").insert({
-      claw_id: clawKey,
-      task_name: payload?.triggerSource || "Manual Dashboard Override",
-      status: isSuccess ? "Success" : "Failed",
-      accuracy_score: isSuccess ? 100.0 : 0.0,
-      execution_time_ms: executionTimeMs
-    });
-
-    if (dbError) {
-      console.error("[Database Insert Error]:", dbError.message);
+    const content = llmData.choices?.[0]?.message?.content;
+    let result: unknown = llmData;
+    if (typeof content === "string") {
+      try {
+        result = JSON.parse(content);
+      } catch {
+        await markExecutionFailed("invalid_provider_response");
+        await writeLegacyLog(canonicalClaw.claw_key, false);
+        return jsonResponse({ success: false, error: "AI provider returned an invalid response" }, 502);
+      }
     }
 
-    if (!isSuccess) {
-      return new Response(
-        JSON.stringify({ success: false, error: llmData.error?.message || "LLM Execution Failed" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (containsTrustedConfigurationDisclosure(result, trustedSop.system_prompt, trustedSop.rules_config)) {
+      await markExecutionFailed("trusted_configuration_disclosure");
+      await writeLegacyLog(canonicalClaw.claw_key, false);
+      return jsonResponse({ success: false, error: "AI provider returned an unsafe response" }, 502);
     }
 
-    return new Response(
-      JSON.stringify({
+    const { error: completionError } = await supabaseAdmin
+      .from("ai_executions")
+      .update({
+        status: "SUCCEEDED",
+        model_provider: "groq",
+        model_name: activeModel,
+        completed_at: new Date().toISOString(),
+        output_summary: { outcome: "succeeded", response_format: "json_object" },
+      })
+      .eq("id", executionId);
+    if (completionError) {
+      console.error("[AI Execution Completion Error]:", completionError.message);
+      return jsonResponse({ error: "Internal server error" }, 500);
+    }
+
+    await writeLegacyLog(canonicalClaw.claw_key, true);
+    return jsonResponse(
+      {
         success: true,
-        clawKey,
-        activeModelUsed: activeModel,
-        executionTimeMs,
-        result: llmData.choices?.[0]?.message?.content ? JSON.parse(llmData.choices[0].message.content) : llmData,
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        executionId,
+        clawKey: canonicalClaw.claw_key,
+        model: activeModel,
+        duration,
+        result,
+      },
+      200,
     );
-
-  } catch (err: any) {
-    console.error("[Edge Function Exception]:", err.message);
-
-    return new Response(
-      JSON.stringify({ success: false, error: err.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+  } catch (error) {
+    console.error("[Edge Function Exception]:", error instanceof Error ? error.message : "unknown error");
+    await markExecutionFailed("internal_error");
+    return jsonResponse({ success: false, error: "Internal server error" }, 500);
   }
 });
