@@ -9,6 +9,7 @@ const corsHeaders = {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EXECUTE_PERMISSION = "ai.execute";
 const TASK_TYPE = "CLAW_ANALYSIS";
+const GROQ_EXECUTION_MODEL = "openai/gpt-oss-20b";
 
 type ExecuteClawRequest = {
   workspaceId?: unknown;
@@ -84,6 +85,29 @@ const containsTrustedConfigurationDisclosure = (
     }
     return false;
   });
+};
+
+const logGroqProviderError = (status: number, model: string | null, responseBody: unknown) => {
+  try {
+    const providerError = responseBody && typeof responseBody === "object" && !Array.isArray(responseBody)
+      ? (responseBody as Record<string, unknown>).error
+      : null;
+    const errorDetails = providerError && typeof providerError === "object" && !Array.isArray(providerError)
+      ? providerError as Record<string, unknown>
+      : {};
+    console.error("[Groq API Error]:", {
+      status,
+      model,
+      ...(typeof errorDetails.code === "string" || typeof errorDetails.code === "number"
+        ? { code: errorDetails.code }
+        : {}),
+      ...(typeof errorDetails.type === "string" ? { type: errorDetails.type } : {}),
+      ...(typeof errorDetails.param === "string" ? { param: errorDetails.param } : {}),
+    });
+  } catch {
+    // Diagnostics must not interfere with the canonical failure path.
+    console.error("[Groq API Error]:", { status, model });
+  }
 };
 
 serve(async (req) => {
@@ -316,25 +340,8 @@ serve(async (req) => {
       return jsonResponse({ error: "Internal server error" }, 500);
     }
 
-    activeModel = "llama-3.3-70b-versatile";
-    try {
-      const modelsRes = await fetch("https://api.groq.com/openai/v1/models", {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
-      if (modelsRes.ok) {
-        const modelsData = await modelsRes.json();
-        const chatModels = (modelsData.data || [])
-          .map((model: { id: string }) => model.id)
-          .filter((id: string) => !id.includes("whisper") && !id.includes("guard") && !id.includes("vision"));
-        const preferred = chatModels.find((id: string) =>
-          id.includes("llama-3.3") || id.includes("llama-3.1") || id.includes("mixtral") || id.includes("gemma"),
-        );
-        if (preferred) activeModel = preferred;
-        else if (chatModels.length > 0) activeModel = chatModels[0];
-      }
-    } catch (error) {
-      console.warn("Model list fetch failed; using default model.", error);
-    }
+    // The production model is server-owned and deterministic. Requests never select models.
+    activeModel = GROQ_EXECUTION_MODEL;
 
     const trustedRules = trustedSop.rules_config && typeof trustedSop.rules_config === "object"
       ? `\n\nTrusted rules configuration: ${JSON.stringify(trustedSop.rules_config)}`
@@ -362,16 +369,38 @@ serve(async (req) => {
         response_format: { type: "json_object" },
       }),
     });
-    const llmData = await llmResponse.json();
+    let llmData: unknown = null;
+    let hasProviderJson = false;
+    try {
+      llmData = await llmResponse.json();
+      hasProviderJson = true;
+    } catch {
+      // A malformed provider error response is handled as a generic provider failure.
+    }
     const duration = Date.now() - startTime;
-    if (!llmResponse.ok || llmData.error) {
-      console.error("[Groq API Error]:", llmResponse.status);
+    const providerData = llmData && typeof llmData === "object" && !Array.isArray(llmData)
+      ? llmData as Record<string, unknown>
+      : {};
+    if (!llmResponse.ok || providerData.error) {
+      logGroqProviderError(llmResponse.status, activeModel, llmData);
       await markExecutionFailed("provider_failure");
       await writeLegacyLog(canonicalClaw.claw_key, false);
       return jsonResponse({ success: false, error: "AI provider request failed" }, 502);
     }
+    if (!hasProviderJson) {
+      await markExecutionFailed("invalid_provider_response");
+      await writeLegacyLog(canonicalClaw.claw_key, false);
+      return jsonResponse({ success: false, error: "AI provider returned an invalid response" }, 502);
+    }
 
-    const content = llmData.choices?.[0]?.message?.content;
+    const choices = Array.isArray(providerData.choices) ? providerData.choices : [];
+    const firstChoice = choices[0] && typeof choices[0] === "object" && !Array.isArray(choices[0])
+      ? choices[0] as Record<string, unknown>
+      : {};
+    const message = firstChoice.message && typeof firstChoice.message === "object" && !Array.isArray(firstChoice.message)
+      ? firstChoice.message as Record<string, unknown>
+      : {};
+    const content = message.content;
     let result: unknown = llmData;
     if (typeof content === "string") {
       try {
