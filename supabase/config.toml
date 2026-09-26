@@ -14,3 +14,8 @@ entrypoint = "./functions/execute-claw/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/integration-admin/index.ts"
+
+[functions.document-admin]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/document-admin/index.ts"

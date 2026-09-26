@@ -420,10 +420,8 @@ export default function Dashboard() {
 
       <FileIngestion 
         isOpen={isUploadOpen} 
+        workspaceId={selectedWorkspaceId}
         onClose={() => setIsUploadOpen(false)} 
-        onUploadSuccess={(file) => {
-          showNotification(`Successfully ingested ${file.name} for AI claw processing!`);
-        }}
       />
 
       <AgentResultModal
