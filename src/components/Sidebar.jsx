@@ -14,6 +14,7 @@ export default function Sidebar({ collapsed, setCollapsed, onSignOut }) {
     { name: 'AI Claws', path: '/dashboard/claws', icon: Bot },
     { name: 'Integrations', path: '/dashboard/integrations', icon: Cpu },
     { name: 'Reports', path: '/dashboard/reports', icon: FileText },
+    { name: 'Documents', path: '/dashboard/documents', icon: FileText },
     { name: 'Audit Logs', path: '/dashboard/audit-logs', icon: ShieldCheck },
     { name: 'Pricing & Tiers', path: '/pricing', icon: CreditCard },
     { name: 'Settings', path: '/dashboard/settings', icon: Settings },

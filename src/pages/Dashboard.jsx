@@ -17,6 +17,7 @@ import ReportsView from '../components/views/ReportsView';
 import SettingsView from '../components/views/SettingsView';
 import ReviewQueue from '../components/views/ReviewQueue';
 import AuditLogsView from '../components/views/AuditLogsView';
+import DocumentsView from '../components/views/DocumentsView';
 
 export default function Dashboard() {
   const [collapsed, setCollapsed] = useState(false);
@@ -393,6 +394,11 @@ export default function Dashboard() {
           <Route 
             path="reports" 
             element={<ReportsView selectedWorkspaceId={selectedWorkspaceId} showNotification={showNotification} />} 
+          />
+
+          <Route
+            path="documents"
+            element={<DocumentsView selectedWorkspaceId={selectedWorkspaceId} />}
           />
 
           <Route 
