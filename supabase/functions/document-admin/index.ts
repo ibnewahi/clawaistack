@@ -7,11 +7,14 @@ const ALLOWED_ORIGINS = new Set([
 ]);
 const DOCUMENT_BUCKET = "financial-documents";
 const DOCUMENT_UPLOAD_PERMISSION = "document.upload";
+const DOCUMENT_READ_PERMISSION = "document.read";
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const DOCUMENT_LIST_LIMIT = 50;
+const SIGNED_DOWNLOAD_URL_TTL_SECONDS = 60;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_FILENAME_LENGTH = 180;
 
-type Action = "prepare-upload" | "finalize-upload";
+type Action = "prepare-upload" | "finalize-upload" | "list-documents" | "authorize-download";
 type FileMetadata = {
   originalFileName: string;
   safeFileName: string;
@@ -25,9 +28,12 @@ type DocumentRow = {
   workspace_id: string;
   bucket_id: string;
   object_path: string;
+  original_file_name: string;
   mime_type: string | null;
   file_size_bytes: number | null;
+  document_type: string | null;
   status: string;
+  created_at: string;
 };
 type FinalizationResult = {
   document_id: string;
@@ -67,11 +73,18 @@ const safeServerLog = (action: string, category: string) => {
 const allowedFieldsForAction: Record<Action, ReadonlySet<string>> = {
   "prepare-upload": new Set(["action", "workspaceId", "file"]),
   "finalize-upload": new Set(["action", "workspaceId", "documentId"]),
+  "list-documents": new Set(["action", "workspaceId"]),
+  "authorize-download": new Set(["action", "workspaceId", "documentId"]),
 };
 
 const readAction = (body: Record<string, unknown>): Action | null => {
   const action = body.action;
-  return action === "prepare-upload" || action === "finalize-upload" ? action : null;
+  return action === "prepare-upload" ||
+    action === "finalize-upload" ||
+    action === "list-documents" ||
+    action === "authorize-download"
+    ? action
+    : null;
 };
 
 const hasOnlyAllowedFields = (body: Record<string, unknown>, action: Action) =>
@@ -227,14 +240,18 @@ serve(async (req) => {
     const workspaceId = resolveUuid(body.workspaceId);
     if (!workspaceId) return jsonResponse({ error: "Invalid workspaceId" }, 400);
 
-    const requestedDocumentId = action === "finalize-upload" ? resolveUuid(body.documentId) : null;
-    if (action === "finalize-upload" && !requestedDocumentId) {
+    const requiresDocumentId = action === "finalize-upload" || action === "authorize-download";
+    const requestedDocumentId = requiresDocumentId ? resolveUuid(body.documentId) : null;
+    if (requiresDocumentId && !requestedDocumentId) {
       return jsonResponse({ error: "Invalid documentId" }, 400);
     }
 
+    const requiredPermission = action === "prepare-upload" || action === "finalize-upload"
+      ? DOCUMENT_UPLOAD_PERMISSION
+      : DOCUMENT_READ_PERMISSION;
     const { data: permitted, error: permissionError } = await supabaseUser.rpc(
       "has_workspace_permission",
-      { p_workspace_id: workspaceId, p_permission_key: DOCUMENT_UPLOAD_PERMISSION },
+      { p_workspace_id: workspaceId, p_permission_key: requiredPermission },
     );
     if (permissionError) {
       safeServerLog(action, "workspace_permission_check");
@@ -259,6 +276,105 @@ serve(async (req) => {
       return jsonResponse({ error: "Internal server error" }, 500);
     }
     const organizationId = workspace.organization_id as string;
+
+    if (action === "list-documents") {
+      const { data: documentRows, error: documentListError } = await supabaseAdmin
+        .from("documents")
+        .select("id, original_file_name, mime_type, file_size_bytes, document_type, status, created_at")
+        .eq("organization_id", organizationId)
+        .eq("workspace_id", workspaceId)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(DOCUMENT_LIST_LIMIT);
+      if (documentListError) {
+        safeServerLog(action, "document_list");
+        return jsonResponse({ error: "Internal server error" }, 500);
+      }
+
+      return jsonResponse({
+        success: true,
+        documents: (documentRows ?? []).map((document) => ({
+          id: document.id,
+          originalFileName: document.original_file_name,
+          mimeType: document.mime_type,
+          fileSizeBytes: document.file_size_bytes,
+          documentType: document.document_type,
+          status: document.status,
+          createdAt: document.created_at,
+        })),
+      }, 200);
+    }
+
+    if (action === "authorize-download") {
+      const documentId = requestedDocumentId;
+      if (!documentId) return jsonResponse({ error: "Invalid documentId" }, 400);
+
+      const { data: documentData, error: documentError } = await supabaseAdmin
+        .from("documents")
+        .select("id, organization_id, workspace_id, bucket_id, object_path, original_file_name, mime_type, file_size_bytes, status")
+        .eq("id", documentId)
+        .eq("organization_id", organizationId)
+        .eq("workspace_id", workspaceId)
+        .maybeSingle();
+      if (documentError) {
+        safeServerLog(action, "document_download_resolution");
+        return jsonResponse({ error: "Internal server error" }, 500);
+      }
+
+      const document = documentData as DocumentRow | null;
+      if (
+        !document ||
+        document.id !== documentId ||
+        document.organization_id !== organizationId ||
+        document.workspace_id !== workspaceId ||
+        document.status !== "UPLOADED" ||
+        document.bucket_id !== DOCUMENT_BUCKET ||
+        !resolveTrustedObjectLocation(document.object_path, organizationId, workspaceId, documentId)
+      ) {
+        return jsonResponse({ error: "Document unavailable" }, 404);
+      }
+
+      const { data: signedDownload, error: signedDownloadError } = await supabaseAdmin.storage
+        .from(DOCUMENT_BUCKET)
+        .createSignedUrl(document.object_path, SIGNED_DOWNLOAD_URL_TTL_SECONDS);
+      if (signedDownloadError || typeof signedDownload?.signedUrl !== "string" || !signedDownload.signedUrl) {
+        safeServerLog(action, "signed_download_authorization");
+        return jsonResponse({ error: "Internal server error" }, 500);
+      }
+
+      const { error: auditError } = await supabaseAdmin.from("audit_events").insert({
+        organization_id: organizationId,
+        workspace_id: workspaceId,
+        event_type: "document.download_authorized",
+        actor_type: "HUMAN",
+        actor_user_id: authenticatedUserId,
+        subject_type: "document",
+        subject_id: documentId,
+        previous_state: null,
+        new_state: null,
+        metadata: {
+          authorization_type: "signed_read_url",
+          document_status: "UPLOADED",
+          url_ttl_seconds: SIGNED_DOWNLOAD_URL_TTL_SECONDS,
+        },
+        occurred_at: new Date().toISOString(),
+      });
+      if (auditError) {
+        safeServerLog(action, "download_authorization_audit");
+        return jsonResponse({ error: "Internal server error" }, 500);
+      }
+
+      return jsonResponse({
+        success: true,
+        document: {
+          id: document.id,
+          originalFileName: document.original_file_name,
+          mimeType: document.mime_type,
+          fileSizeBytes: document.file_size_bytes,
+        },
+        downloadUrl: signedDownload.signedUrl,
+      }, 200);
+    }
 
     if (action === "finalize-upload") {
       const documentId = requestedDocumentId;

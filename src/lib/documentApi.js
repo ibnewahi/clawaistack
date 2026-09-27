@@ -46,3 +46,26 @@ export const finalizeDocumentUpload = ({ workspaceId, documentId }) => {
     documentId,
   });
 };
+
+export const listDocuments = ({ workspaceId }) => {
+  if (!isNonEmptyString(workspaceId)) {
+    throw new Error("Invalid document list request");
+  }
+
+  return invokeDocumentAdmin({
+    action: "list-documents",
+    workspaceId,
+  });
+};
+
+export const authorizeDocumentDownload = ({ workspaceId, documentId }) => {
+  if (!isNonEmptyString(workspaceId) || !isNonEmptyString(documentId)) {
+    throw new Error("Invalid document download request");
+  }
+
+  return invokeDocumentAdmin({
+    action: "authorize-download",
+    workspaceId,
+    documentId,
+  });
+};
