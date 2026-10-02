@@ -19,3 +19,8 @@ entrypoint = "./functions/integration-admin/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/document-admin/index.ts"
+
+[functions.approval-admin]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/approval-admin/index.ts"
