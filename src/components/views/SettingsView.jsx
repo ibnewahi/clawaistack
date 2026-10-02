@@ -3,11 +3,14 @@ import { Settings, Building2, Key } from 'lucide-react';
 
 export default function SettingsView({ 
   selectedCompany, 
-  setSelectedCompany, 
   selectedWorkspaceId, 
   showNotification,
   onDeleteWorkspace 
 }) {
+  if (!selectedWorkspaceId) {
+    return <main className="flex-1 p-6 md:p-8 max-w-[1200px] w-full mx-auto text-sm text-zinc-400">No workspace selected</main>;
+  }
+
   return (
     <main className="flex-1 p-6 md:p-8 max-w-[1200px] w-full mx-auto space-y-6 animate-in fade-in duration-200">
       <div className="border-b border-zinc-800/60 pb-5">
@@ -32,8 +35,8 @@ export default function SettingsView({
               <input 
                 type="text" 
                 value={selectedCompany} 
-                onChange={(e) => setSelectedCompany(e.target.value)}
-                className="w-full bg-[#181a22] border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500/50"
+                readOnly
+                className="w-full bg-[#181a22] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-400 cursor-not-allowed"
               />
             </div>
             <div>

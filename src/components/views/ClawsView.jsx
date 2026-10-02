@@ -34,8 +34,7 @@ export default function ClawsView({
   // Local status map to guarantee immediate UI toggle responsiveness
   const [localStatuses, setLocalStatuses] = useState({});
 
-  // Active workspace ID with fallback to localStorage
-  const activeWsId = selectedWorkspaceId || localStorage.getItem('claw_active_workspace_id');
+  const activeWsId = selectedWorkspaceId;
 
   useEffect(() => {
     async function fetchLiveTier() {
@@ -65,9 +64,17 @@ export default function ClawsView({
 
   // --- WORKSPACE SYNC LOGIC ---
   useEffect(() => {
+    let isCurrentWorkspace = true;
+
+    setLocalStatuses({});
+
     if (!activeWsId || activeWsId === 'undefined' || activeWsId === 'null') {
-      return;
+      return () => {
+        isCurrentWorkspace = false;
+      };
     }
+
+    const workspaceId = activeWsId;
 
     async function fetchWorkspaceClaws() {
       try {
@@ -75,7 +82,9 @@ export default function ClawsView({
           const { data, error } = await supabase
             .from('workspace_claws')
             .select('claw_id, status')
-            .eq('workspace_id', activeWsId);
+            .eq('workspace_id', workspaceId);
+
+          if (!isCurrentWorkspace) return;
 
           if (!error && data && data.length > 0) {
             const initialMap = {};
@@ -84,7 +93,7 @@ export default function ClawsView({
                 initialMap[item.claw_id] = item.status.toLowerCase() === 'active' ? 'Active' : 'Paused';
               }
             });
-            setLocalStatuses(prev => ({ ...prev, ...initialMap }));
+            setLocalStatuses(initialMap);
 
             setClawsList(prevClaws => 
               prevClaws.map(claw => {
@@ -103,30 +112,37 @@ export default function ClawsView({
           }
         }
       } catch (err) {
-        console.error('Error fetching workspace specific claws:', err);
+        if (isCurrentWorkspace) console.error('Error fetching workspace specific claws:', err);
       }
     }
 
     fetchWorkspaceClaws();
+
+    return () => {
+      isCurrentWorkspace = false;
+    };
   }, [activeWsId, setClawsList]);
 
   // Real-time Workspace Subscription
   useEffect(() => {
     if (!activeWsId || activeWsId === 'undefined' || activeWsId === 'null' || !supabase) return;
 
+    let isCurrentWorkspace = true;
+    const workspaceId = activeWsId;
+
     const channel = supabase
-      .channel(`realtime_workspace_claws_${activeWsId}`)
+      .channel(`realtime_workspace_claws_${workspaceId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'workspace_claws',
-          filter: `workspace_id=eq.${activeWsId}`,
+          filter: `workspace_id=eq.${workspaceId}`,
         },
         (payload) => {
           const updatedRow = payload.new;
-          if (updatedRow && updatedRow.claw_id) {
+          if (isCurrentWorkspace && updatedRow && updatedRow.claw_id) {
             const normalizedStatus = updatedRow.status.toLowerCase() === 'active' ? 'Active' : 'Paused';
             setLocalStatuses(prev => ({ ...prev, [updatedRow.claw_id]: normalizedStatus }));
             setClawsList((prev) =>
@@ -144,6 +160,7 @@ export default function ClawsView({
       .subscribe();
 
     return () => {
+      isCurrentWorkspace = false;
       supabase.removeChannel(channel);
     };
   }, [activeWsId, setClawsList]);
@@ -235,6 +252,10 @@ export default function ClawsView({
       }
     }
   };
+
+  if (!activeWsId) {
+    return <main className="flex-1 p-6 md:p-8 max-w-[1600px] w-full mx-auto text-sm text-zinc-400">No workspace selected</main>;
+  }
 
   return (
     <main className="flex-1 p-6 md:p-8 max-w-[1600px] w-full mx-auto space-y-6 animate-in fade-in duration-200">

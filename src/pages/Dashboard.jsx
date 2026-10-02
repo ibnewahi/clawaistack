@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Zap } from 'lucide-react';
 import Header from '../components/Header';
@@ -8,6 +8,7 @@ import { AgentResultModal } from '../components/AgentResultModal';
 
 // Shared Supabase Client Import
 import { supabase } from '../lib/supabase';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 
 // Sub-view imports
 import OverviewView from '../components/views/OverviewView';
@@ -19,16 +20,26 @@ import ReviewQueue from '../components/views/ReviewQueue';
 import AuditLogsView from '../components/views/AuditLogsView';
 import DocumentsView from '../components/views/DocumentsView';
 
+const DEFAULT_CLAWS = [
+  { id: 'bookkeeper', name: 'Bookkeeper Claw', key: 'bookkeeper-claw', desc: 'Auto-categorizes transactions, reconciles bank feeds & posts general ledger journal entries.', status: 'Active', tasksToday: 14, accuracy: '100%' },
+  { id: 'ar', name: 'AR Collector Claw', key: 'ar-collector-claw', desc: 'Monitors unpaid invoices, sends automated email reminders, and manages escalation workflows.', status: 'Active', tasksToday: 6, accuracy: '100%' },
+  { id: 'ap', name: 'AP Matcher Claw', key: 'ap-claw', desc: 'Extracts line items from vendor bills, runs 3-way matching, and queues payouts for CFO approval.', status: 'Active', tasksToday: 3, accuracy: '100%' },
+  { id: 'cfo', name: 'CFO Forecast Claw', key: 'cfo-claw', desc: 'Computes real-time runway, cash flow projections, EBITDA metrics, and burn rate warnings.', status: 'Active', tasksToday: 2, accuracy: '100%' },
+  { id: 'controller', name: 'Controller Audit Claw', key: 'controller-claw', desc: 'Scans ledger for duplicate payouts, unexpected tax anomalies, and compliance audit gaps.', status: 'Active', tasksToday: 8, accuracy: '100%' },
+];
+
 export default function Dashboard() {
   const [collapsed, setCollapsed] = useState(false);
-  
-  // Initialized synchronously from localStorage to eliminate startup flash
-  const [selectedCompany, setSelectedCompany] = useState(() => {
-    return localStorage.getItem('claw_active_workspace_name') || 'ClawAI Stack Int Ltd';
-  });
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(() => {
-    return localStorage.getItem('claw_active_workspace_id') || null;
-  });
+  const {
+    authorizedWorkspaces,
+    selectedWorkspace,
+    selectedWorkspaceId,
+    selectedWorkspaceName,
+    selectWorkspace,
+    refreshWorkspaces,
+  } = useWorkspace();
+  const selectedWorkspaceIdRef = useRef(selectedWorkspaceId);
+  selectedWorkspaceIdRef.current = selectedWorkspaceId;
   
   const [hideMetrics, setHideMetrics] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -47,6 +58,14 @@ export default function Dashboard() {
   // Real-time Database Execution Logs State
   const [dbLogs, setDbLogs] = useState([]);
   const [isLogsLoading, setIsLogsLoading] = useState(true);
+
+  useEffect(() => {
+    setIsExecutingClaw(false);
+    setExecutionResult(null);
+    setActiveModalData(null);
+    setModalOpen(false);
+    setNotificationMessage(null);
+  }, [selectedWorkspaceId]);
 
   const showNotification = (msg) => {
     setNotificationMessage(msg);
@@ -70,7 +89,19 @@ export default function Dashboard() {
 
   // Fetch logs from Supabase & subscribe to real-time inserts with deduplication
   useEffect(() => {
+    let isCurrentWorkspace = true;
     let channel;
+
+    setDbLogs([]);
+
+    if (!selectedWorkspaceId) {
+      setIsLogsLoading(false);
+      return () => {
+        isCurrentWorkspace = false;
+      };
+    }
+
+    const workspaceId = selectedWorkspaceId;
 
     const fetchExecutionLogs = async () => {
       setIsLogsLoading(true);
@@ -79,55 +110,61 @@ export default function Dashboard() {
           const { data, error } = await supabase
             .from('claw_execution_logs')
             .select('*')
+            .eq('workspace_id', workspaceId)
             .order('created_at', { ascending: false })
             .limit(20);
+
+          if (!isCurrentWorkspace) return;
 
           if (error) {
             console.error('Error fetching execution logs:', error.message);
           } else if (data) {
             setDbLogs(data);
           }
+
+          channel = supabase
+            .channel(`dashboard_logs_realtime_${workspaceId}`)
+            .on(
+              'postgres_changes',
+              { event: 'INSERT', schema: 'public', table: 'claw_execution_logs', filter: `workspace_id=eq.${workspaceId}` },
+              (payload) => {
+                if (!isCurrentWorkspace || payload.new.workspace_id !== workspaceId) return;
+                setDbLogs((prev) => {
+                  if (prev.some((log) => log.id === payload.new.id)) return prev;
+                  return [payload.new, ...prev.slice(0, 19)];
+                });
+              }
+            )
+            .subscribe();
+
+          if (!isCurrentWorkspace && channel) {
+            supabase.removeChannel(channel);
+            channel = undefined;
+          }
         }
       } catch (err) {
-        console.error('Failed to load database logs:', err);
+        if (isCurrentWorkspace) console.error('Failed to load database logs:', err);
       } finally {
-        setIsLogsLoading(false);
+        if (isCurrentWorkspace) setIsLogsLoading(false);
       }
     };
 
     fetchExecutionLogs();
 
-    if (supabase) {
-      channel = supabase
-        .channel('dashboard_logs_realtime')
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'claw_execution_logs' },
-          (payload) => {
-            setDbLogs((prev) => {
-              if (prev.some((log) => log.id === payload.new.id)) return prev;
-              return [payload.new, ...prev.slice(0, 19)];
-            });
-          }
-        )
-        .subscribe();
-    }
-
     return () => {
+      isCurrentWorkspace = false;
       if (channel && supabase) {
         supabase.removeChannel(channel);
       }
     };
-  }, []);
+  }, [selectedWorkspaceId]);
 
-  const handleCompanyChange = (newCompany, workspaceId = null) => {
-    setSelectedCompany(newCompany);
-    if (workspaceId) {
-      setSelectedWorkspaceId(workspaceId);
-      localStorage.setItem('claw_active_workspace_id', workspaceId);
-    }
-    localStorage.setItem('claw_active_workspace_name', newCompany);
-    showNotification(`Switched active entity to "${newCompany}"`);
+  const handleWorkspaceChange = (workspaceId) => {
+    const workspace = authorizedWorkspaces.find(({ id }) => id === workspaceId);
+    if (!workspace) return;
+
+    selectWorkspace(workspace.id);
+    showNotification(`Switched active entity to "${workspace.name}"`);
   };
 
   const handleSyncLedger = () => {
@@ -162,9 +199,6 @@ export default function Dashboard() {
       showNotification('Workspace successfully deleted.');
       
       // Clear local storage and reload app state
-      localStorage.removeItem('claw_active_workspace_id');
-      localStorage.removeItem('claw_active_workspace_name');
-      
       setTimeout(() => {
         window.location.reload();
       }, 800);
@@ -182,6 +216,8 @@ export default function Dashboard() {
       return null;
     }
 
+    const workspaceId = selectedWorkspaceId;
+
     showNotification(`Triggering ${canonicalClawKey} execution...`);
     setIsExecutingClaw(true);
     try {
@@ -191,10 +227,12 @@ export default function Dashboard() {
         throw new Error('You must be signed in to run a Claw.');
       }
 
+      if (selectedWorkspaceIdRef.current !== workspaceId) return null;
+
       if (supabase) {
         const { data, error } = await supabase.functions.invoke('execute-claw', {
           body: {
-            workspaceId: selectedWorkspaceId,
+            workspaceId,
             clawKey: canonicalClawKey,
             payload: {}
           },
@@ -204,6 +242,8 @@ export default function Dashboard() {
         });
 
         if (error) throw error;
+
+        if (selectedWorkspaceIdRef.current !== workspaceId) return null;
 
         setExecutionResult(data);
         showNotification(`${canonicalClawKey} executed successfully!`);
@@ -224,26 +264,32 @@ export default function Dashboard() {
         return data;
       }
     } catch (err) {
+      if (selectedWorkspaceIdRef.current !== workspaceId) return null;
       console.error(`Execution error for ${canonicalClawKey}:`, err);
       setExecutionResult({ error: err.message });
       showNotification(`Failed to run ${canonicalClawKey}: ${err.message}`);
       return null;
     } finally {
-      setIsExecutingClaw(false);
+      if (selectedWorkspaceIdRef.current === workspaceId) {
+        setIsExecutingClaw(false);
+      }
     }
+  };
+
+  const handleWorkspaceCreated = (workspaceId) => {
+    localStorage.setItem('claw_active_workspace_id', workspaceId);
+    refreshWorkspaces();
   };
 
   const handleExecuteClawAI = () => {
     handleTriggerAgent('bookkeeper-claw');
   };
 
-  const [clawsList, setClawsList] = useState([
-    { id: 'bookkeeper', name: 'Bookkeeper Claw', key: 'bookkeeper-claw', desc: 'Auto-categorizes transactions, reconciles bank feeds & posts general ledger journal entries.', status: 'Active', tasksToday: 14, accuracy: '100%' },
-    { id: 'ar', name: 'AR Collector Claw', key: 'ar-collector-claw', desc: 'Monitors unpaid invoices, sends automated email reminders, and manages escalation workflows.', status: 'Active', tasksToday: 6, accuracy: '100%' },
-    { id: 'ap', name: 'AP Matcher Claw', key: 'ap-claw', desc: 'Extracts line items from vendor bills, runs 3-way matching, and queues payouts for CFO approval.', status: 'Active', tasksToday: 3, accuracy: '100%' },
-    { id: 'cfo', name: 'CFO Forecast Claw', key: 'cfo-claw', desc: 'Computes real-time runway, cash flow projections, EBITDA metrics, and burn rate warnings.', status: 'Active', tasksToday: 2, accuracy: '100%' },
-    { id: 'controller', name: 'Controller Audit Claw', key: 'controller-claw', desc: 'Scans ledger for duplicate payouts, unexpected tax anomalies, and compliance audit gaps.', status: 'Active', tasksToday: 8, accuracy: '100%' },
-  ]);
+  const [clawsList, setClawsList] = useState(DEFAULT_CLAWS);
+
+  useEffect(() => {
+    setClawsList(DEFAULT_CLAWS.map((claw) => ({ ...claw })));
+  }, [selectedWorkspaceId]);
 
   // PURE SYNCHRONOUS OPTIMISTIC TOGGLE (0ms latency, zero page flash)
   const toggleClawStatus = (clawId) => {
@@ -329,8 +375,10 @@ export default function Dashboard() {
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         
         <Header 
-          selectedCompany={selectedCompany}
-          onCompanyChange={handleCompanyChange}
+          authorizedWorkspaces={authorizedWorkspaces}
+          selectedWorkspace={selectedWorkspace}
+          onWorkspaceSelect={handleWorkspaceChange}
+          onWorkspaceCreated={handleWorkspaceCreated}
           hideMetrics={hideMetrics}
           onHideMetricsToggle={() => setHideMetrics(!hideMetrics)}
           onSync={handleSyncLedger}
@@ -354,7 +402,7 @@ export default function Dashboard() {
               <div className="flex-1 flex flex-col">
                 <div className="p-6 space-y-6">
                   <OverviewView 
-                    selectedCompany={selectedCompany}
+                    selectedCompany={selectedWorkspaceName}
                     selectedWorkspaceId={selectedWorkspaceId}
                     hideMetrics={hideMetrics}
                     handleTriggerAgent={handleTriggerAgent}
@@ -376,7 +424,7 @@ export default function Dashboard() {
             path="claws" 
             element={
               <ClawsView 
-                selectedCompany={selectedCompany}
+                selectedCompany={selectedWorkspaceName}
                 selectedWorkspaceId={selectedWorkspaceId}
                 clawsList={clawsList}
                 setClawsList={setClawsList}
@@ -410,9 +458,8 @@ export default function Dashboard() {
             path="settings" 
             element={
               <SettingsView 
-                selectedCompany={selectedCompany} 
+                selectedCompany={selectedWorkspaceName}
                 selectedWorkspaceId={selectedWorkspaceId}
-                setSelectedCompany={setSelectedCompany} 
                 showNotification={showNotification}
                 onDeleteWorkspace={handleDeleteWorkspace}
               />

@@ -102,7 +102,7 @@ const drawerTrendData = {
 };
 
 export default function OverviewView({ 
-  selectedCompany = "ClawAI Stack Int Ltd", 
+  selectedCompany = null,
   selectedWorkspaceId = null,
   hideMetrics = false, 
   handleTriggerAgent = () => {}, 
@@ -140,85 +140,87 @@ export default function OverviewView({
     accuracy: 100
   });
 
-  const fetchRealtimeTaskHealth = async () => {
-    try {
-      if (!supabase) return;
-      
-      let query = supabase
-        .from('claw_execution_logs')
-        .select('accuracy_score');
-
-      if (selectedWorkspaceId) {
-        query = query.eq('workspace_id', selectedWorkspaceId);
-      }
-
-      const { data, error } = await query;
-
-      if (!error && data) {
-        const totalTasks = data.length;
-        const avgAccuracy = totalTasks > 0
-          ? Math.round(data.reduce((acc, row) => acc + (row.accuracy_score || 100), 0) / totalTasks)
-          : 100;
-
-        setTaskHealth({
-          tasksToday: totalTasks,
-          accuracy: avgAccuracy
-        });
-      }
-    } catch (err) {
-      console.error('Error fetching task health:', err);
-    }
-  };
-
   // Fetch workspace financial metrics on workspace switch with zero fallback
   useEffect(() => {
-    fetchRealtimeTaskHealth();
+    let isCurrentWorkspace = true;
+    const emptyMetrics = {
+      cash_balance: 0,
+      monthly_burn: 0,
+      ar_collected: 0,
+      current_ratio: 0,
+      ebitda: 0
+    };
+
+    setWorkspaceMetrics(emptyMetrics);
+    setTaskHealth({ tasksToday: 0, accuracy: 100 });
+
+    if (!selectedWorkspaceId) {
+      return () => {
+        isCurrentWorkspace = false;
+      };
+    }
+
+    const workspaceId = selectedWorkspaceId;
+
+    const fetchRealtimeTaskHealth = async () => {
+      try {
+        if (!supabase) return;
+
+        const { data, error } = await supabase
+          .from('claw_execution_logs')
+          .select('accuracy_score')
+          .eq('workspace_id', workspaceId);
+
+        if (!isCurrentWorkspace) return;
+
+        if (!error && data) {
+          const totalTasks = data.length;
+          const avgAccuracy = totalTasks > 0
+            ? Math.round(data.reduce((acc, row) => acc + (row.accuracy_score || 100), 0) / totalTasks)
+            : 100;
+
+          setTaskHealth({ tasksToday: totalTasks, accuracy: avgAccuracy });
+        }
+      } catch (err) {
+        if (isCurrentWorkspace) console.error('Error fetching task health:', err);
+      }
+    };
 
     const fetchWorkspaceFinancials = async () => {
       if (!supabase) return;
       try {
-        let query = supabase
+        const query = supabase
           .from('financial_metrics')
-          .select('*');
-
-        if (selectedWorkspaceId) {
-          query = query.eq('workspace_id', selectedWorkspaceId);
-        }
+          .select('*')
+          .eq('workspace_id', workspaceId);
 
         const { data, error } = await query.maybeSingle();
+        if (!isCurrentWorkspace) return;
+
         if (!error && data) {
           setWorkspaceMetrics(data);
         } else {
-          setWorkspaceMetrics({
-            cash_balance: 0,
-            monthly_burn: 0,
-            ar_collected: 0,
-            current_ratio: 0,
-            ebitda: 0
-          });
+          setWorkspaceMetrics(emptyMetrics);
         }
       } catch (err) {
-        console.error('Error fetching workspace financial metrics:', err);
-        setWorkspaceMetrics({
-          cash_balance: 0,
-          monthly_burn: 0,
-          ar_collected: 0,
-          current_ratio: 0,
-          ebitda: 0
-        });
+        if (isCurrentWorkspace) {
+          console.error('Error fetching workspace financial metrics:', err);
+          setWorkspaceMetrics(emptyMetrics);
+        }
       }
     };
 
+    fetchRealtimeTaskHealth();
     fetchWorkspaceFinancials();
 
     if (supabase) {
       const channel = supabase
-        .channel(`overview_task_health_${selectedWorkspaceId || 'global'}`)
+        .channel(`overview_task_health_${workspaceId}`)
         .on(
           'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'claw_execution_logs' },
+          { event: 'INSERT', schema: 'public', table: 'claw_execution_logs', filter: `workspace_id=eq.${workspaceId}` },
           (payload) => {
-            if (!selectedWorkspaceId || payload.new?.workspace_id === selectedWorkspaceId) {
+            if (isCurrentWorkspace && payload.new?.workspace_id === workspaceId) {
               fetchRealtimeTaskHealth();
             }
           }
@@ -226,9 +228,14 @@ export default function OverviewView({
         .subscribe();
 
       return () => {
+        isCurrentWorkspace = false;
         supabase.removeChannel(channel);
       };
     }
+
+    return () => {
+      isCurrentWorkspace = false;
+    };
   }, [selectedWorkspaceId]);
 
   const toggleMenu = (e, id) => {
@@ -254,6 +261,14 @@ export default function OverviewView({
 
   const displayedClaws = showAllClaws ? clawsList : (clawsList || []).slice(0, 3);
   const displayedLogs = showAllLogs ? filteredLogs : (filteredLogs || []).slice(0, 3);
+
+  if (!selectedWorkspaceId) {
+    return (
+      <main className="flex-1 p-6 md:p-8 max-w-[1600px] w-full mx-auto">
+        <p className="text-sm text-zinc-400">No workspace selected</p>
+      </main>
+    );
+  }
 
   return (
     <main className="flex-1 p-6 md:p-8 max-w-[1600px] w-full mx-auto space-y-6" onClick={() => setOpenMenuId(null)}>

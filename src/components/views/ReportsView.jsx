@@ -12,17 +12,36 @@ export default function ReportsView({ selectedWorkspaceId, showNotification }) {
 
   // Fetch workspace-specific financial figures
   useEffect(() => {
+    let isCurrentWorkspace = true;
+    const emptyFinancialMetrics = {
+      ebitda: '£14,500 EBITDA',
+      cash: '£115,000 Cash',
+      outstanding: '£0 Outstanding'
+    };
+
+    setFinancialMetrics(emptyFinancialMetrics);
+
+    if (!selectedWorkspaceId) {
+      setIsLoading(false);
+      return () => {
+        isCurrentWorkspace = false;
+      };
+    }
+
+    const workspaceId = selectedWorkspaceId;
+
     const fetchReportMetrics = async () => {
       setIsLoading(true);
       try {
         // Example query structure if pulling from a workspace ledger or summary table
-        let query = supabase.from('workspace_reports').select('*');
-        
-        if (selectedWorkspaceId) {
-          query = query.eq('workspace_id', selectedWorkspaceId);
-        }
+        const query = supabase
+          .from('workspace_reports')
+          .select('*')
+          .eq('workspace_id', workspaceId);
 
         const { data, error } = await query.single();
+
+        if (!isCurrentWorkspace) return;
 
         if (error && error.code !== 'PGRST116') { // Ignore missing row error
           console.error('Error fetching report metrics:', error.message);
@@ -34,13 +53,17 @@ export default function ReportsView({ selectedWorkspaceId, showNotification }) {
           });
         }
       } catch (err) {
-        console.error('Failed to load dynamic report data:', err);
+        if (isCurrentWorkspace) console.error('Failed to load dynamic report data:', err);
       } finally {
-        setIsLoading(false);
+        if (isCurrentWorkspace) setIsLoading(false);
       }
     };
 
     fetchReportMetrics();
+
+    return () => {
+      isCurrentWorkspace = false;
+    };
   }, [selectedWorkspaceId]);
 
   const reports = [
@@ -48,6 +71,10 @@ export default function ReportsView({ selectedWorkspaceId, showNotification }) {
     { title: 'Balance Sheet Summary', date: 'As of Today', value: financialMetrics.cash, status: 'Verified' },
     { title: 'Aged Receivables Breakdown', date: 'Overdue Summary', value: financialMetrics.outstanding, status: '100% Collected' },
   ];
+
+  if (!selectedWorkspaceId) {
+    return <main className="flex-1 p-6 md:p-8 max-w-[1600px] w-full mx-auto"><p className="text-sm text-zinc-400">No workspace selected</p></main>;
+  }
 
   return (
     <main className="flex-1 p-6 md:p-8 max-w-[1600px] w-full mx-auto space-y-6 animate-in fade-in duration-200">

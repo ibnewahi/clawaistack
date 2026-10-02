@@ -19,8 +19,10 @@ import {
 import { supabase } from '../lib/supabase';
 
 export default function Header({ 
-  selectedCompany, 
-  onCompanyChange, 
+  authorizedWorkspaces,
+  selectedWorkspace,
+  onWorkspaceSelect,
+  onWorkspaceCreated,
   hideMetrics, 
   onHideMetricsToggle, 
   onSync, 
@@ -39,12 +41,6 @@ export default function Header({
   const [newCompanyName, setNewCompanyName] = useState('');
   const [currentTier, setCurrentTier] = useState('cfo');
   
-  // Real Supabase Workspaces State with localStorage persistence
-  const [companies, setCompanies] = useState([]);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(() => {
-    return localStorage.getItem('claw_active_workspace_id') || null;
-  });
-
   // User Profile State
   const [userProfile, setUserProfile] = useState({
     name: 'Misbahullah',
@@ -56,9 +52,9 @@ export default function Header({
   const notificationsMenuRef = useRef(null);
   const profileMenuRef = useRef(null);
 
-  // Fetch logged-in user details, tier, profile, and workspaces on mount
+  // Fetch logged-in user details, tier, and profile on mount.
   useEffect(() => {
-    async function getUserDataAndWorkspaces() {
+    async function getUserData() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
@@ -79,54 +75,12 @@ export default function Header({
             setCurrentTier(profileData.tier);
           }
 
-          // 2. Fetch Real Workspaces from Supabase
-          const { data: workspaceData, error: wsError } = await supabase
-            .from('workspaces')
-            .select('*')
-            .eq('owner_id', user.id);
-
-          if (wsError) throw wsError;
-
-          if (workspaceData && workspaceData.length > 0) {
-            setCompanies(workspaceData);
-            
-            // Match stored ID or name securely
-            const storedId = localStorage.getItem('claw_active_workspace_id');
-            const currentMatch = workspaceData.find(w => w.id === storedId) || workspaceData.find(w => w.name === selectedCompany);
-            
-            if (currentMatch) {
-              setSelectedWorkspaceId(currentMatch.id);
-              onCompanyChange(currentMatch.name, currentMatch.id);
-              localStorage.setItem('claw_active_workspace_id', currentMatch.id);
-              localStorage.setItem('claw_active_workspace_name', currentMatch.name);
-            } else if (workspaceData[0]) {
-              setSelectedWorkspaceId(workspaceData[0].id);
-              onCompanyChange(workspaceData[0].name, workspaceData[0].id);
-              localStorage.setItem('claw_active_workspace_id', workspaceData[0].id);
-              localStorage.setItem('claw_active_workspace_name', workspaceData[0].name);
-            }
-          } else {
-            // Seed a default workspace if none exist yet
-            const { data: newWs, error: insertErr } = await supabase
-              .from('workspaces')
-              .insert([{ name: 'ClawAI Stack Int Ltd', owner_id: user.id }])
-              .select()
-              .single();
-
-            if (newWs) {
-              setCompanies([newWs]);
-              setSelectedWorkspaceId(newWs.id);
-              onCompanyChange(newWs.name, newWs.id);
-              localStorage.setItem('claw_active_workspace_id', newWs.id);
-              localStorage.setItem('claw_active_workspace_name', newWs.name);
-            }
-          }
         }
       } catch (err) {
         console.error('Error loading user data or workspaces:', err.message);
       }
     }
-    getUserDataAndWorkspaces();
+    getUserData();
   }, []);
 
   const handleSaveProfile = async (e) => {
@@ -187,7 +141,7 @@ export default function Header({
   // Tier Enforcement Check before Opening Modal
   const handleOpenAddCompanyModal = () => {
     setIsCompanyMenuOpen(false);
-    const currentCount = companies.length;
+    const currentCount = authorizedWorkspaces.length;
     const tier = (currentTier || 'starter').toLowerCase();
 
     if (tier === 'cfo' || tier === 'enterprise') {
@@ -224,12 +178,7 @@ export default function Header({
       if (error) throw error;
 
       if (data) {
-        setCompanies(prev => [...prev, data]);
-        setSelectedWorkspaceId(data.id);
-        onCompanyChange(data.name, data.id);
-        
-        localStorage.setItem('claw_active_workspace_id', data.id);
-        localStorage.setItem('claw_active_workspace_name', data.name);
+        onWorkspaceCreated(data.id);
       }
 
       setNewCompanyName('');
@@ -259,7 +208,7 @@ export default function Header({
               className="flex items-center gap-2 px-3 py-1.5 bg-[#13151b] border border-zinc-800 rounded-lg text-xs font-medium text-white hover:border-zinc-700 transition cursor-pointer"
             >
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span className="max-w-[150px] sm:max-w-none truncate">{selectedCompany || 'Select Workspace'}</span>
+              <span className="max-w-[150px] sm:max-w-none truncate">{selectedWorkspace?.name ?? 'No workspace selected'}</span>
               <ChevronDown className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${isCompanyMenuOpen ? 'rotate-180' : ''}`} />
             </button>
 
@@ -269,20 +218,15 @@ export default function Header({
                 <div className="px-3 py-1.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
                   Switch Workspace Entity
                 </div>
-                {companies.map((comp) => {
-                  const isSelected = selectedWorkspaceId ? comp.id === selectedWorkspaceId : selectedCompany === comp.name;
+                {authorizedWorkspaces.map((comp) => {
+                  const isSelected = comp.id === selectedWorkspace?.id;
 
                   return (
                     <button
                       key={comp.id}
                       type="button"
                       onClick={() => {
-                        setSelectedWorkspaceId(comp.id);
-                        onCompanyChange(comp.name, comp.id);
-                        
-                        localStorage.setItem('claw_active_workspace_id', comp.id);
-                        localStorage.setItem('claw_active_workspace_name', comp.name);
-                        
+                        onWorkspaceSelect(comp.id);
                         setIsCompanyMenuOpen(false);
                       }}
                       className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition cursor-pointer ${

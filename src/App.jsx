@@ -7,6 +7,7 @@ import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import AuthPage from './pages/Auth';
 import PricingPage from './pages/PricingPage';
+import { WorkspaceProvider } from './contexts/WorkspaceContext';
 
 // Full Detailed Legal Page Views
 const PrivacyPolicyView = () => (
@@ -227,7 +228,9 @@ export default function App() {
           path="/dashboard/*" 
           element={
             <ProtectedRoute>
-              <Dashboard />
+              <WorkspaceProvider>
+                <Dashboard />
+              </WorkspaceProvider>
             </ProtectedRoute>
           } 
         />

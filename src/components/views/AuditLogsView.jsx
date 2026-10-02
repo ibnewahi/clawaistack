@@ -10,19 +10,31 @@ export default function AuditLogsView({ selectedWorkspaceId }) {
 
   // Fetch immutable logs from claw_execution_logs scoped by workspace
   useEffect(() => {
+    let isCurrentWorkspace = true;
+
+    setLogs([]);
+
+    if (!selectedWorkspaceId) {
+      setIsLoading(false);
+      return () => {
+        isCurrentWorkspace = false;
+      };
+    }
+
+    const workspaceId = selectedWorkspaceId;
+
     const fetchAuditLogs = async () => {
       setIsLoading(true);
       try {
-        let query = supabase
+        const query = supabase
           .from('claw_execution_logs')
           .select('*')
+          .eq('workspace_id', workspaceId)
           .order('created_at', { ascending: false });
 
-        if (selectedWorkspaceId) {
-          query = query.eq('workspace_id', selectedWorkspaceId);
-        }
-
         const { data, error } = await query;
+
+        if (!isCurrentWorkspace) return;
 
         if (error) {
           console.error('Error fetching audit logs:', error.message);
@@ -30,9 +42,9 @@ export default function AuditLogsView({ selectedWorkspaceId }) {
           setLogs(data);
         }
       } catch (err) {
-        console.error('Failed to load audit logs:', err);
+        if (isCurrentWorkspace) console.error('Failed to load audit logs:', err);
       } finally {
-        setIsLoading(false);
+        if (isCurrentWorkspace) setIsLoading(false);
       }
     };
 
@@ -43,10 +55,9 @@ export default function AuditLogsView({ selectedWorkspaceId }) {
       .channel('claw_execution_logs_realtime')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'claw_execution_logs' },
+        { event: 'INSERT', schema: 'public', table: 'claw_execution_logs', filter: `workspace_id=eq.${workspaceId}` },
         (payload) => {
-          // Only append if it matches the current workspace view (or if no workspace is filtered)
-          if (!selectedWorkspaceId || payload.new.workspace_id === selectedWorkspaceId) {
+          if (isCurrentWorkspace && payload.new.workspace_id === workspaceId) {
             setLogs((prev) => [payload.new, ...prev]);
           }
         }
@@ -54,6 +65,7 @@ export default function AuditLogsView({ selectedWorkspaceId }) {
       .subscribe();
 
     return () => {
+      isCurrentWorkspace = false;
       supabase.removeChannel(channel);
     };
   }, [selectedWorkspaceId]);
@@ -65,6 +77,10 @@ export default function AuditLogsView({ selectedWorkspaceId }) {
       (log.task_name && log.task_name.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesStatus && matchesSearch;
   });
+
+  if (!selectedWorkspaceId) {
+    return <div className="p-6 max-w-7xl mx-auto text-sm text-zinc-400">No workspace selected</div>;
+  }
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
