@@ -1,215 +1,196 @@
-import { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, ShieldAlert, PlusCircle, AlertCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { logAuditEntry } from '../../lib/auditLogger';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle, CheckCircle, ShieldAlert, XCircle } from 'lucide-react';
+import { decideApproval, listReviewQueue } from '../../lib/approvalApi';
 
 export default function ReviewQueue({ selectedWorkspaceId }) {
   const [queueItems, setQueueItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
+  const [loadError, setLoadError] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const mountedRef = useRef(true);
+  const selectedWorkspaceRef = useRef(selectedWorkspaceId);
+  const requestGenerationRef = useRef(0);
 
-  // Helper to show a clean toast notification
+  selectedWorkspaceRef.current = selectedWorkspaceId;
+
   const showToast = (message, type = 'success') => {
     setToast({ show: true, message, type });
     setTimeout(() => {
-      setToast(prev => ({ ...prev, show: false }));
+      setToast((previous) => ({ ...previous, show: false }));
     }, 4000);
   };
 
-  // Fetch pending items from Supabase on mount or workspace change
+  const isCurrentRequest = useCallback((workspaceId, generation) => (
+    mountedRef.current &&
+    selectedWorkspaceRef.current === workspaceId &&
+    requestGenerationRef.current === generation
+  ), []);
+
+  const loadQueue = useCallback(async (workspaceId, showLoading = false) => {
+    const generation = ++requestGenerationRef.current;
+
+    if (showLoading && isCurrentRequest(workspaceId, generation)) {
+      setQueueItems([]);
+      setLoadError(false);
+      setLoading(true);
+    }
+
+    try {
+      const { items } = await listReviewQueue({ workspaceId, pageSize: 20 });
+      if (!isCurrentRequest(workspaceId, generation)) return false;
+
+      setQueueItems(items);
+      setLoadError(false);
+      return true;
+    } catch {
+      if (isCurrentRequest(workspaceId, generation)) {
+        setQueueItems([]);
+        setLoadError(true);
+      }
+      throw new Error('Request failed');
+    } finally {
+      if (showLoading && isCurrentRequest(workspaceId, generation)) setLoading(false);
+    }
+  }, [isCurrentRequest]);
+
   useEffect(() => {
-    fetchReviewQueue();
-  }, [selectedWorkspaceId]);
-
-  const fetchReviewQueue = async () => {
-    setLoading(true);
-    try {
-      let query = supabase
-        .from('action_queue')
-        .select('*')
-        .eq('status', 'pending');
-
-      // Scope query to workspace if selected
-      if (selectedWorkspaceId) {
-        query = query.eq('workspace_id', selectedWorkspaceId);
-      }
-
-      const { data, error } = await query.order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      if (!data || data.length === 0) {
-        // Fallback demo items if no rows match the active workspace filter
-        setQueueItems([
-          {
-            id: '1',
-            agent_name: 'Bookkeeper Claw',
-            action_type: 'Categorize Expense',
-            payload: { vendor: 'AWS Cloud Hosting', amount: '$450.00', category: 'Software Infrastructure' },
-            confidence_score: 0.88,
-            workspace_id: selectedWorkspaceId,
-            created_at: new Date().toISOString()
-          }
-        ]);
-      } else {
-        setQueueItems(data);
-      }
-    } catch (err) {
-      console.error('Error fetching review queue:', err);
-    } finally {
+    if (!selectedWorkspaceId) {
+      ++requestGenerationRef.current;
+      setQueueItems([]);
+      setLoadError(false);
       setLoading(false);
+      return;
     }
-  };
 
-  const handleAction = async (item, decision) => {
-    setProcessingId(item.id);
+    loadQueue(selectedWorkspaceId, true).catch(() => {});
+  }, [loadQueue, selectedWorkspaceId]);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      ++requestGenerationRef.current;
+    };
+  }, []);
+
+  const handleDecision = async (item, decision) => {
+    if (!selectedWorkspaceId || processingId) return;
+
+    const decisionWorkspaceId = selectedWorkspaceId;
+    const decisionGeneration = requestGenerationRef.current;
+    setProcessingId(item.approvalRequestId);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      await decideApproval({
+        workspaceId: decisionWorkspaceId,
+        approvalRequestId: item.approvalRequestId,
+        approvalStepId: item.activeStepId,
+        decision,
+      });
 
-      // Safely log audit entry without blocking queue updates if logger throws an exception
+      if (!mountedRef.current || selectedWorkspaceRef.current !== decisionWorkspaceId) return;
+
       try {
-        await logAuditEntry({
-          userId: user ? user.id : null,
-          agentName: item.agent_name,
-          actionType: item.action_type,
-          status: decision,
-          previousState: null,
-          newState: item.payload,
-          confidenceScore: item.confidence_score,
-          workspaceId: selectedWorkspaceId
-        });
-      } catch (logErr) {
-        console.warn('Audit logger exception caught:', logErr);
+        const refreshed = await loadQueue(decisionWorkspaceId);
+        if (refreshed) {
+          showToast(decision === 'APPROVED' ? 'Approval recorded.' : 'Rejection recorded.', 'success');
+        }
+      } catch {
+        if (isCurrentRequest(decisionWorkspaceId, requestGenerationRef.current)) {
+          showToast('Decision recorded, but the queue could not be refreshed.', 'error');
+        }
       }
-
-      const { error: updateError } = await supabase
-        .from('action_queue')
-        .update({ status: decision })
-        .eq('id', item.id);
-
-      if (updateError) {
-        console.warn('Could not update queue row in DB:', updateError.message);
+    } catch {
+      if (isCurrentRequest(decisionWorkspaceId, decisionGeneration)) {
+        showToast('Unable to record this decision. Please try again.', 'error');
       }
-
-      setQueueItems(prev => prev.filter(q => q.id !== item.id));
-      showToast(`Action successfully ${decision} and recorded to audit trail!`, 'success');
-
-    } catch (err) {
-      console.error('Unexpected error:', err);
-      showToast(`Error: ${err.message}`, 'error');
     } finally {
-      setProcessingId(null);
+      if (mountedRef.current) setProcessingId(null);
     }
   };
 
-  const handleTestLog = async () => {
-    try {
-      const { error } = await supabase
-        .from('action_queue')
-        .insert([
-          {
-            agent_name: 'Test Claw',
-            action_type: 'Manual Low-Confidence Test',
-            payload: { vendor: 'Test Vendor Inc.', amount: '$250.00', category: 'Testing' },
-            confidence_score: 0.84,
-            status: 'pending',
-            workspace_id: selectedWorkspaceId || null,
-            created_at: new Date().toISOString()
-          }
-        ]);
-
-      if (error) throw error;
-
-      showToast('Test pending item added to Review Queue!', 'success');
-      fetchReviewQueue();
-    } catch (err) {
-      showToast(`Error adding test item: ${err.message}`, 'error');
-    }
-  };
+  if (!selectedWorkspaceId) {
+    return <div className="rounded-2xl border border-zinc-800 bg-[#13151b] p-6 text-sm text-zinc-400">No workspace selected</div>;
+  }
 
   return (
-    <div className="relative rounded-2xl border border-zinc-800 bg-[#13151b] p-6 shadow-xl space-y-6">
-      
-      {/* Toast Notification Banner */}
+    <div className="relative space-y-6 rounded-2xl border border-zinc-800 bg-[#13151b] p-6 shadow-xl">
       {toast.show && (
-        <div className={`absolute top-4 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-medium shadow-2xl transition-all duration-300 animate-fade-in ${
-          toast.type === 'error' 
-            ? 'bg-red-500/10 border-red-500/30 text-red-400' 
-            : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+        <div className={`absolute right-4 top-4 z-50 flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-medium shadow-2xl transition-all duration-300 animate-fade-in ${
+          toast.type === 'error'
+            ? 'border-red-500/30 bg-red-500/10 text-red-400'
+            : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
         }`}>
           {toast.type === 'error' ? <AlertCircle className="h-4 w-4 shrink-0" /> : <CheckCircle className="h-4 w-4 shrink-0" />}
           <span>{toast.message}</span>
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-400">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-yellow-500/20 bg-yellow-500/10 text-yellow-400">
             <ShieldAlert className="h-5 w-5" />
           </div>
           <div>
             <h2 className="text-lg font-bold text-white">Pending Controller Reviews</h2>
-            <p className="text-xs text-zinc-400">AI actions requiring human-in-the-loop verification</p>
+            <p className="text-xs text-zinc-400">Approval requests requiring your review</p>
           </div>
         </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleTestLog}
-            className="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/20 transition flex items-center gap-1.5 cursor-pointer"
-          >
-            <PlusCircle className="h-3.5 w-3.5" /> Sim. Low-Confidence Item
-          </button>
-          <span className="text-xs font-mono bg-yellow-500/10 text-yellow-400 px-3 py-1.5 rounded-full border border-yellow-500/20">
-            {queueItems.length} Items Pending
-          </span>
-        </div>
+        <span className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-3 py-1.5 font-mono text-xs text-yellow-400">
+          {queueItems.length} Items Pending
+        </span>
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-zinc-500 text-sm">Loading review queue...</div>
+        <div className="py-12 text-center text-sm text-zinc-500">Loading review queue...</div>
+      ) : loadError ? (
+        <div className="py-12 text-center text-sm text-zinc-500">Unable to load the review queue. Please try again.</div>
       ) : queueItems.length === 0 ? (
-        <div className="text-center py-12 text-zinc-500 text-sm">
-          All AI actions have been successfully reviewed and logged for this workspace!
-        </div>
+        <div className="py-12 text-center text-sm text-zinc-500">No approval requests are currently available for your review.</div>
       ) : (
         <div className="space-y-4">
-          {queueItems.map((item) => (
-            <div key={item.id} className="p-4 rounded-xl bg-[#090a0f] border border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-emerald-400">{item.agent_name}</span>
-                  <span className="text-zinc-600">•</span>
-                  <span className="text-xs text-zinc-300">{item.action_type}</span>
-                  <span className="text-[10px] font-mono bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded">
-                    Confidence: {Math.round((item.confidence_score || 0.85) * 100)}%
-                  </span>
+          {queueItems.map((item) => {
+            const isProcessing = processingId === item.approvalRequestId;
+            return (
+              <div key={item.approvalRequestId} className="flex flex-col items-start justify-between gap-4 rounded-xl border border-zinc-800 bg-[#090a0f] p-4 sm:flex-row sm:items-center">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold text-emerald-400">{item.actionType}</span>
+                    <span className="text-zinc-600">•</span>
+                    <span className="text-xs text-zinc-300">{item.status}</span>
+                    <span className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-[10px] text-zinc-400">{item.activeStepStatus}</span>
+                  </div>
+                  <div className="text-sm text-zinc-200">
+                    <span className="text-zinc-500">Target:</span> {item.targetType || 'Not specified'}{item.targetId ? ` · ${item.targetId}` : ''}
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-400">
+                    <span>Submitted: {item.submittedAt}</span>
+                    {item.expiresAt && <span>Expires: {item.expiresAt}</span>}
+                    <span>Step {item.activeStepOrder}: {item.activeStepName}</span>
+                    <span>Approvals: {item.approvedDecisionCount} / {item.requiredApprovals}</span>
+                    {item.independentApprovalRequired && <span>Independent review required</span>}
+                  </div>
                 </div>
-                <div className="mt-2 text-sm text-zinc-200 font-mono">
-                  {item.payload?.vendor || 'Transaction'} — <span className="text-emerald-400">{item.payload?.amount || '$0.00'}</span> ({item.payload?.category || item.payload?.po_match || 'Review Required'})
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  disabled={processingId === item.id}
-                  onClick={() => handleAction(item, 'approved')}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/20 transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                >
-                  <CheckCircle className="h-3.5 w-3.5" /> Approve
-                </button>
-                <button
-                  disabled={processingId === item.id}
-                  onClick={() => handleAction(item, 'rejected')}
-                  className="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-500/20 transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                >
-                  <XCircle className="h-3.5 w-3.5" /> Reject
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    disabled={Boolean(processingId)}
+                    onClick={() => handleDecision(item, 'APPROVED')}
+                    className="flex cursor-pointer items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-400 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <CheckCircle className="h-3.5 w-3.5" /> {isProcessing ? 'Recording...' : 'Approve'}
+                  </button>
+                  <button
+                    disabled={Boolean(processingId)}
+                    onClick={() => handleDecision(item, 'REJECTED')}
+                    className="flex cursor-pointer items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-400 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <XCircle className="h-3.5 w-3.5" /> Reject
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
