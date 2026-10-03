@@ -40,6 +40,11 @@ export default function Header({
   const [isAddCompanyOpen, setIsAddCompanyOpen] = useState(false);
   const [newCompanyName, setNewCompanyName] = useState('');
   const [currentTier, setCurrentTier] = useState('cfo');
+  const [hasAuthenticatedSession, setHasAuthenticatedSession] = useState(false);
+  const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
+  const [workspaceCreationState, setWorkspaceCreationState] = useState('idle');
+  const [workspaceCreationMessage, setWorkspaceCreationMessage] = useState(null);
+  const [committedWorkspace, setCommittedWorkspace] = useState(null);
   
   // User Profile State
   const [userProfile, setUserProfile] = useState({
@@ -51,12 +56,17 @@ export default function Header({
   const companyMenuRef = useRef(null);
   const notificationsMenuRef = useRef(null);
   const profileMenuRef = useRef(null);
+  const workspaceCreationAttemptRef = useRef(null);
+  const workspaceCreationInFlightRef = useRef(false);
+  const committedWorkspaceRefreshInFlightRef = useRef(false);
+  const [isRefreshingCommittedWorkspace, setIsRefreshingCommittedWorkspace] = useState(false);
 
   // Fetch logged-in user details, tier, and profile on mount.
   useEffect(() => {
     async function getUserData() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
+        setHasAuthenticatedSession(Boolean(user));
         if (user) {
           // 1. Fetch User Profile & Tier
           const { data: profileData } = await supabase
@@ -77,6 +87,7 @@ export default function Header({
 
         }
       } catch (err) {
+        setHasAuthenticatedSession(false);
         console.error('Error loading user data or workspaces:', err.message);
       }
     }
@@ -138,13 +149,22 @@ export default function Header({
     setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
   };
 
-  // Tier Enforcement Check before Opening Modal
+  // Product-plan UI gating only. The trusted RPC independently authorizes creation.
   const handleOpenAddCompanyModal = () => {
+    if (committedWorkspace || workspaceCreationInFlightRef.current || committedWorkspaceRefreshInFlightRef.current) {
+      return;
+    }
+
     setIsCompanyMenuOpen(false);
     const currentCount = authorizedWorkspaces.length;
     const tier = (currentTier || 'starter').toLowerCase();
 
     if (tier === 'cfo' || tier === 'enterprise') {
+      workspaceCreationAttemptRef.current = null;
+      setNewCompanyName('');
+      setWorkspaceCreationState('idle');
+      setWorkspaceCreationMessage(null);
+      setCommittedWorkspace(null);
       setIsAddCompanyOpen(true);
       return;
     }
@@ -159,35 +179,199 @@ export default function Header({
       return;
     }
 
+    workspaceCreationAttemptRef.current = null;
+    setNewCompanyName('');
+    setWorkspaceCreationState('idle');
+    setWorkspaceCreationMessage(null);
+    setCommittedWorkspace(null);
     setIsAddCompanyOpen(true);
   };
 
-  // Handler to Create Workspace in Supabase Database
-  const handleCreateWorkspace = async () => {
-    if (!newCompanyName.trim()) return;
+  const closeWorkspaceCreationModal = () => {
+    if (workspaceCreationInFlightRef.current
+      || committedWorkspaceRefreshInFlightRef.current
+      || committedWorkspace) return;
+
+    workspaceCreationAttemptRef.current = null;
+    setNewCompanyName('');
+    setWorkspaceCreationState('idle');
+    setWorkspaceCreationMessage(null);
+    setIsAddCompanyOpen(false);
+  };
+
+  const handleWorkspaceNameChange = (event) => {
+    if (committedWorkspace) return;
+
+    const nextName = event.target.value;
+    const existingAttempt = workspaceCreationAttemptRef.current;
+
+    if (!workspaceCreationInFlightRef.current
+      && existingAttempt
+      && nextName.trim() !== existingAttempt.normalizedName) {
+      workspaceCreationAttemptRef.current = null;
+      setWorkspaceCreationState('idle');
+      setWorkspaceCreationMessage(null);
+    }
+
+    setNewCompanyName(nextName);
+  };
+
+  const classifyWorkspaceCreationError = (error) => {
+    if (error?.message === 'INVALID_INPUT') {
+      return { state: 'deterministic-error', message: 'Enter a valid workspace name.' };
+    }
+    if (error?.message === 'FORBIDDEN') {
+      return { state: 'deterministic-error', message: 'You are not permitted to create a workspace.' };
+    }
+    if (error?.message === 'IDEMPOTENCY_CONFLICT') {
+      return {
+        state: 'deterministic-error',
+        message: 'This creation request conflicts with an earlier request. Start a new workspace creation.',
+      };
+    }
+    if (error?.message === 'AUTH_REQUIRED' || error?.code === '28000') {
+      return { state: 'deterministic-error', message: 'Your session is unavailable. Sign in again.' };
+    }
+
+    return { state: 'retryable-error', message: 'Workspace creation could not be completed. You may retry.' };
+  };
+
+  const confirmCommittedWorkspaceRefresh = async (workspace) => {
+    if (!workspace?.workspaceId || committedWorkspaceRefreshInFlightRef.current) return false;
+
+    committedWorkspaceRefreshInFlightRef.current = true;
+    setIsRefreshingCommittedWorkspace(true);
+    setWorkspaceCreationState('refreshing-created-workspace');
+    setWorkspaceCreationMessage(null);
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('workspaces')
-        .insert([{ name: newCompanyName.trim(), owner_id: user.id }])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if (data) {
-        onWorkspaceCreated(data.id);
+      const refreshSucceeded = await onWorkspaceCreated(workspace.workspaceId);
+      if (!refreshSucceeded) {
+        setWorkspaceCreationState('created-refresh-failed');
+        setWorkspaceCreationMessage(`Workspace \"${workspace.workspaceName}\" was created, but it could not be loaded. Retry workspace refresh.`);
+        return false;
       }
 
+      workspaceCreationAttemptRef.current = null;
+      setCommittedWorkspace(null);
       setNewCompanyName('');
+      setWorkspaceCreationState('idle');
+      setWorkspaceCreationMessage(null);
       setIsAddCompanyOpen(false);
-    } catch (err) {
-      console.error('Error creating workspace entity:', err.message);
-      alert('Failed to save new workspace.');
+      return true;
+    } catch {
+      setWorkspaceCreationState('created-refresh-failed');
+      setWorkspaceCreationMessage(`Workspace \"${workspace.workspaceName}\" was created, but it could not be loaded. Retry workspace refresh.`);
+      return false;
+    } finally {
+      committedWorkspaceRefreshInFlightRef.current = false;
+      setIsRefreshingCommittedWorkspace(false);
     }
   };
+
+  const retryCommittedWorkspaceRefresh = () => {
+    if (!committedWorkspace || isRefreshingCommittedWorkspace) return;
+    confirmCommittedWorkspaceRefresh(committedWorkspace);
+  };
+
+  const handleCreateWorkspace = async () => {
+    if (workspaceCreationInFlightRef.current
+      || committedWorkspace
+      || workspaceCreationState === 'created-refresh-failed'
+      || workspaceCreationState === 'deterministic-error') return;
+
+    const normalizedName = newCompanyName.trim();
+    const organizationId = selectedWorkspace?.organization_id;
+
+    if (!normalizedName || normalizedName.length > 120) {
+      setWorkspaceCreationState('deterministic-error');
+      setWorkspaceCreationMessage('Enter a valid workspace name.');
+      return;
+    }
+
+    if (!organizationId || !hasAuthenticatedSession) {
+      setWorkspaceCreationState('deterministic-error');
+      setWorkspaceCreationMessage('Your session is unavailable. Sign in again.');
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setWorkspaceCreationState('deterministic-error');
+        setWorkspaceCreationMessage('Your session is unavailable. Sign in again.');
+        return;
+      }
+
+      const existingAttempt = workspaceCreationAttemptRef.current;
+      const attempt = existingAttempt
+        && existingAttempt.organizationId === organizationId
+        && existingAttempt.normalizedName === normalizedName
+        ? existingAttempt
+        : {
+          organizationId,
+          normalizedName,
+          idempotencyKey: crypto.randomUUID(),
+        };
+
+      workspaceCreationAttemptRef.current = attempt;
+      workspaceCreationInFlightRef.current = true;
+      setIsCreatingWorkspace(true);
+      setWorkspaceCreationState('requesting');
+      setWorkspaceCreationMessage(null);
+
+      const { data, error } = await supabase
+        .rpc('create_workspace', {
+          p_organization_id: attempt.organizationId,
+          p_workspace_name: attempt.normalizedName,
+          p_idempotency_key: attempt.idempotencyKey,
+        });
+
+      if (error) {
+        const classified = classifyWorkspaceCreationError(error);
+        setWorkspaceCreationState(classified.state);
+        setWorkspaceCreationMessage(classified.message);
+        return;
+      }
+
+      if (!Array.isArray(data) || data.length !== 1) {
+        setWorkspaceCreationState('retryable-error');
+        setWorkspaceCreationMessage('Workspace creation could not be completed. You may retry.');
+        return;
+      }
+
+      const createdWorkspace = data[0];
+      if (typeof createdWorkspace?.workspace_id !== 'string'
+        || !createdWorkspace.workspace_id.trim()
+        || typeof createdWorkspace?.workspace_name !== 'string'
+        || !createdWorkspace.workspace_name.trim()) {
+        setWorkspaceCreationState('retryable-error');
+        setWorkspaceCreationMessage('Workspace creation could not be completed. You may retry.');
+        return;
+      }
+
+      const committedResult = {
+        workspaceId: createdWorkspace.workspace_id,
+        workspaceName: createdWorkspace.workspace_name,
+      };
+      setCommittedWorkspace(committedResult);
+      await confirmCommittedWorkspaceRefresh(committedResult);
+    } catch {
+      setWorkspaceCreationState('retryable-error');
+      setWorkspaceCreationMessage('Workspace creation could not be completed. You may retry.');
+    } finally {
+      workspaceCreationInFlightRef.current = false;
+      setIsCreatingWorkspace(false);
+    }
+  };
+
+  const canSubmitWorkspaceCreation = hasAuthenticatedSession
+    && Boolean(selectedWorkspace?.organization_id)
+    && !isCreatingWorkspace
+    && !committedWorkspace
+    && !isRefreshingCommittedWorkspace
+    && workspaceCreationState !== 'created-refresh-failed'
+    && workspaceCreationState !== 'deterministic-error';
 
   return (
     <>
@@ -508,8 +692,9 @@ export default function Header({
               <h3 className="text-base font-bold">Add New Company Workspace</h3>
               <button 
                 type="button"
-                onClick={() => { setIsAddCompanyOpen(false); setNewCompanyName(''); }}
-                className="text-zinc-400 hover:text-white transition cursor-pointer"
+                onClick={closeWorkspaceCreationModal}
+                disabled={isCreatingWorkspace || isRefreshingCommittedWorkspace || committedWorkspace}
+                className="text-zinc-400 hover:text-white transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -521,28 +706,44 @@ export default function Header({
                 type="text"
                 placeholder="e.g., Apex Holdings Ltd"
                 value={newCompanyName}
-                onChange={(e) => setNewCompanyName(e.target.value)}
+                onChange={handleWorkspaceNameChange}
+                disabled={isCreatingWorkspace || isRefreshingCommittedWorkspace || committedWorkspace}
                 className="w-full bg-[#090a0f] border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 transition"
               />
               <p className="text-[11px] text-zinc-500">
                 Active Tier: <span className="text-emerald-400 font-mono uppercase">{currentTier}</span>. This workspace will maintain independent accounting mappings and execution logs.
               </p>
+              {workspaceCreationMessage && (
+                <p className="text-[11px] text-amber-300">{workspaceCreationMessage}</p>
+              )}
+              {committedWorkspace && workspaceCreationState === 'created-refresh-failed' && (
+                <button
+                  type="button"
+                  onClick={retryCommittedWorkspaceRefresh}
+                  disabled={isRefreshingCommittedWorkspace}
+                  className="text-[11px] font-medium text-emerald-400 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Retry workspace refresh
+                </button>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => { setIsAddCompanyOpen(false); setNewCompanyName(''); }}
-                className="px-4 py-2 bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 rounded-xl hover:bg-zinc-800 transition cursor-pointer"
+                onClick={closeWorkspaceCreationModal}
+                disabled={isCreatingWorkspace || isRefreshingCommittedWorkspace || committedWorkspace}
+                className="px-4 py-2 bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 rounded-xl hover:bg-zinc-800 transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleCreateWorkspace}
-                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-xl transition cursor-pointer"
+                disabled={!canSubmitWorkspaceCreation}
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-xl transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Create Workspace
+                {isCreatingWorkspace ? 'Creating…' : 'Create Workspace'}
               </button>
             </div>
           </div>

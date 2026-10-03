@@ -242,9 +242,11 @@ export default function Dashboard() {
     }
   };
 
-  const handleWorkspaceCreated = (workspaceId) => {
-    localStorage.setItem('claw_active_workspace_id', workspaceId);
-    refreshWorkspaces();
+  const handleWorkspaceCreated = async (workspaceId) => {
+    const refreshResult = await refreshWorkspaces(workspaceId);
+
+    return refreshResult?.success === true
+      && refreshResult.workspace?.id === workspaceId;
   };
 
   const handleExecuteClawAI = () => {
