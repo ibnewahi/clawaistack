@@ -175,40 +175,6 @@ export default function Dashboard() {
     }, 1200);
   };
 
-  // Workspace Deletion Handler
-  const handleDeleteWorkspace = async () => {
-    if (!selectedWorkspaceId) {
-      showNotification('No active workspace selected for deletion.');
-      return;
-    }
-
-    try {
-      if (supabase) {
-        // Delete related workspace claws first to respect foreign keys
-        await supabase.from('workspace_claws').delete().eq('workspace_id', selectedWorkspaceId);
-        
-        // Delete the workspace itself
-        const { error } = await supabase
-          .from('workspaces')
-          .delete()
-          .eq('id', selectedWorkspaceId);
-
-        if (error) throw error;
-      }
-
-      showNotification('Workspace successfully deleted.');
-      
-      // Clear local storage and reload app state
-      setTimeout(() => {
-        window.location.reload();
-      }, 800);
-
-    } catch (err) {
-      console.error('Failed to delete workspace:', err);
-      showNotification(`Failed to delete workspace: ${err.message}`);
-    }
-  };
-
   // Dynamic Handler to invoke Supabase Edge Function with instant optimistic updates
   const handleTriggerAgent = async (canonicalClawKey) => {
     if (!selectedWorkspaceId) {
@@ -461,7 +427,6 @@ export default function Dashboard() {
                 selectedCompany={selectedWorkspaceName}
                 selectedWorkspaceId={selectedWorkspaceId}
                 showNotification={showNotification}
-                onDeleteWorkspace={handleDeleteWorkspace}
               />
             } 
           />

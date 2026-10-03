@@ -4,8 +4,7 @@ import { Settings, Building2, Key } from 'lucide-react';
 export default function SettingsView({ 
   selectedCompany, 
   selectedWorkspaceId, 
-  showNotification,
-  onDeleteWorkspace 
+  showNotification
 }) {
   if (!selectedWorkspaceId) {
     return <main className="flex-1 p-6 md:p-8 max-w-[1200px] w-full mx-auto text-sm text-zinc-400">No workspace selected</main>;
@@ -79,28 +78,6 @@ export default function SettingsView({
               </button>
             </div>
           </div>
-        </div>
-
-        {/* Danger Zone: Delete Workspace */}
-        <div className="bg-[#13151b] border border-red-500/20 rounded-2xl p-6 space-y-4">
-          <div>
-            <h3 className="text-sm font-bold text-red-400">Danger Zone: Delete Workspace</h3>
-            <p className="text-xs text-zinc-400 mt-1">
-              Permanently remove "{selectedCompany}" and all associated claw configurations and historical execution logs. This action cannot be undone.
-            </p>
-          </div>
-
-          <button
-            onClick={() => {
-              const confirmDelete = window.confirm(`Are you sure you want to permanently delete "${selectedCompany}"? This action cannot be undone.`);
-              if (confirmDelete && onDeleteWorkspace) {
-                onDeleteWorkspace();
-              }
-            }}
-            className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-semibold text-xs rounded-xl transition cursor-pointer"
-          >
-            Delete Current Workspace
-          </button>
         </div>
 
         <div className="flex justify-end">
