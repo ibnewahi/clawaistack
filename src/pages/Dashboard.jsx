@@ -28,6 +28,13 @@ const DEFAULT_CLAWS = [
   { id: 'controller', name: 'Controller Audit Claw', key: 'controller-claw', desc: 'Scans ledger for duplicate payouts, unexpected tax anomalies, and compliance audit gaps.', status: 'Active', tasksToday: 8, accuracy: '100%' },
 ];
 
+const resolveCanonicalClawKey = (identifier) => {
+  const normalizedIdentifier = String(identifier || '');
+  return DEFAULT_CLAWS.find(
+    (claw) => claw.id === normalizedIdentifier || claw.key === normalizedIdentifier
+  )?.key || null;
+};
+
 export default function Dashboard() {
   const [collapsed, setCollapsed] = useState(false);
   const {
@@ -39,6 +46,7 @@ export default function Dashboard() {
     refreshWorkspaces,
   } = useWorkspace();
   const selectedWorkspaceIdRef = useRef(selectedWorkspaceId);
+  const clawStateMutationRef = useRef(new Set());
   selectedWorkspaceIdRef.current = selectedWorkspaceId;
   
   const [hideMetrics, setHideMetrics] = useState(false);
@@ -259,43 +267,71 @@ export default function Dashboard() {
     setClawsList(DEFAULT_CLAWS.map((claw) => ({ ...claw })));
   }, [selectedWorkspaceId]);
 
-  // PURE SYNCHRONOUS OPTIMISTIC TOGGLE (0ms latency, zero page flash)
-  const toggleClawStatus = (clawId) => {
-    let updatedClawName = '';
-    let newStatusStr = 'Paused';
-
-    setClawsList((prevList) =>
-      prevList.map((claw) => {
-        const isMatch = claw.id === clawId || claw.key === clawId;
-        if (isMatch) {
-          const isCurrentlyActive = String(claw.status).toLowerCase() === 'active';
-          newStatusStr = isCurrentlyActive ? 'Paused' : 'Active';
-          updatedClawName = claw.name;
-          return { ...claw, status: newStatusStr };
-        }
-        return claw;
-      })
-    );
-
-    if (updatedClawName) {
-      showNotification(`${updatedClawName} set to ${newStatusStr}`);
+  const toggleClawStatus = async (clawIdentifier, requestedActive) => {
+    if (!selectedWorkspaceId) {
+      showNotification('Select a workspace before changing a Claw state.');
+      return null;
     }
 
-    if (supabase && selectedWorkspaceId) {
-      const dbKey = String(clawId).includes('-claw') ? clawId : `${clawId}-claw`;
-      supabase
-        .from('workspace_claws')
-        .upsert(
-          {
-            workspace_id: selectedWorkspaceId,
-            claw_id: dbKey,
-            status: newStatusStr,
-            updated_at: new Date().toISOString()
-          },
-          { onConflict: 'workspace_id,claw_id' }
-        )
-        .then(() => {})
-        .catch((err) => console.warn('Background status sync notice:', err));
+    const workspaceId = selectedWorkspaceId;
+    const canonicalClawKey = resolveCanonicalClawKey(clawIdentifier);
+    if (!canonicalClawKey) {
+      showNotification('Unable to resolve the requested Claw.');
+      return null;
+    }
+
+    const currentClaw = clawsList.find((claw) => claw.key === canonicalClawKey);
+    if (!currentClaw) {
+      showNotification('Unable to resolve the requested Claw.');
+      return null;
+    }
+
+    const desiredActive = typeof requestedActive === 'boolean'
+      ? requestedActive
+      : String(currentClaw.status).toLowerCase() !== 'active';
+    const mutationKey = `${workspaceId}:${canonicalClawKey}`;
+
+    if (clawStateMutationRef.current.has(mutationKey)) return null;
+    clawStateMutationRef.current.add(mutationKey);
+
+    try {
+      const { data, error } = await supabase.rpc('set_workspace_claw_state', {
+        p_workspace_id: workspaceId,
+        p_claw_key: canonicalClawKey,
+        p_active: desiredActive,
+      });
+
+      if (error) throw error;
+
+      const response = Array.isArray(data) ? data[0] : data;
+      if (
+        !response
+        || response.workspace_id !== workspaceId
+        || response.claw_key !== canonicalClawKey
+        || !['Active', 'Paused'].includes(response.status)
+        || typeof response.changed !== 'boolean'
+        || !response.updated_at
+      ) {
+        throw new Error('Invalid Claw state response.');
+      }
+
+      if (selectedWorkspaceIdRef.current !== workspaceId) return null;
+
+      setClawsList((prevList) => prevList.map((claw) => (
+        claw.key === canonicalClawKey
+          ? { ...claw, status: response.status }
+          : claw
+      )));
+      showNotification(`${currentClaw.name} is now ${response.status}.`);
+      return response;
+    } catch {
+      if (selectedWorkspaceIdRef.current === workspaceId) {
+        console.error('Failed to update Claw state.');
+        showNotification('Unable to update Claw state.');
+      }
+      return null;
+    } finally {
+      clawStateMutationRef.current.delete(mutationKey);
     }
   };
 

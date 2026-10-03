@@ -33,6 +33,7 @@ export default function ClawsView({
   
   // Local status map to guarantee immediate UI toggle responsiveness
   const [localStatuses, setLocalStatuses] = useState({});
+  const [pendingClawKeys, setPendingClawKeys] = useState({});
 
   const activeWsId = selectedWorkspaceId;
 
@@ -176,7 +177,7 @@ export default function ClawsView({
     }
   };
 
-  // Immediate Local State Toggle & Supabase Persistence Handler
+  // Emit a state-change intent to Dashboard, the sole persistence owner.
   const handlePersistentToggle = async (clawId, clawKey, e) => {
     if (e) {
       e.stopPropagation();
@@ -190,39 +191,16 @@ export default function ClawsView({
     const currentStatus = localStatuses[resolvedId] || (String(targetClaw.status).toLowerCase() === 'active' ? 'Active' : 'Paused');
     const newStatus = currentStatus === 'Active' ? 'Paused' : 'Active';
 
-    // 1. Immediately update local override map for instant re-render
-    setLocalStatuses(prev => ({ ...prev, [resolvedId]: newStatus, [clawId]: newStatus }));
+    if (pendingClawKeys[resolvedId] || !toggleClawStatus) return;
+    setPendingClawKeys(prev => ({ ...prev, [resolvedId]: true }));
 
-    // 2. Also update parent list state if needed
-    setClawsList(prev => 
-      prev.map(c => (c.id === resolvedId || c.key === resolvedId || c.key === clawKey) ? { ...c, status: newStatus } : c)
-    );
-
-    if (toggleClawStatus) {
-      toggleClawStatus(clawId);
-    }
-
-    // 3. Save to Supabase database in the background
     try {
-      if (supabase && activeWsId) {
-        const { error } = await supabase
-          .from('workspace_claws')
-          .upsert({
-            workspace_id: activeWsId,
-            claw_id: resolvedId,
-            status: newStatus.toLowerCase(),
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'workspace_id, claw_id' });
-
-        if (error) {
-          console.error('Failed to persist claw status to Supabase:', error.message);
-          if (showNotification) showNotification(`Error saving state: ${error.message}`);
-        } else {
-          if (showNotification) showNotification(`${targetClaw.name} is now ${newStatus}`);
-        }
+      const response = await toggleClawStatus(resolvedId, newStatus === 'Active');
+      if (response?.claw_key === resolvedId && ['Active', 'Paused'].includes(response.status)) {
+        setLocalStatuses(prev => ({ ...prev, [resolvedId]: response.status }));
       }
-    } catch (err) {
-      console.error('Error in persistent toggle:', err);
+    } finally {
+      setPendingClawKeys(prev => ({ ...prev, [resolvedId]: false }));
     }
   };
 
@@ -311,6 +289,7 @@ export default function ClawsView({
           const resolvedId = claw.key || clawId;
           const currentStatus = localStatuses[resolvedId] || localStatuses[clawId] || claw.status || 'Paused';
           const isActive = String(currentStatus).toLowerCase() === 'active';
+          const isStateChangePending = pendingClawKeys[resolvedId] === true;
 
           return (
             <div 
@@ -340,11 +319,12 @@ export default function ClawsView({
                     <button 
                       type="button"
                       onClick={(e) => handlePersistentToggle(claw.id, claw.key, e)}
+                      disabled={isStateChangePending}
                       className={`relative z-10 pointer-events-auto px-3 py-1 rounded-full text-[11px] font-semibold border flex items-center gap-1.5 cursor-pointer select-none transition ${
                         isActive 
                           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20' 
                           : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700 hover:text-zinc-200'
-                      }`}
+                      } ${isStateChangePending ? 'cursor-wait opacity-60' : ''}`}
                     >
                       {isActive ? <Play className="h-3 w-3 fill-current" /> : <Pause className="h-3 w-3 fill-current" />}
                       <span>{isActive ? 'Active' : 'Paused'}</span>
