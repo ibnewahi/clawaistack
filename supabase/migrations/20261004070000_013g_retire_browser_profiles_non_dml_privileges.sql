@@ -1,0 +1,3 @@
+REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
+ON TABLE public.profiles
+FROM anon, authenticated;
