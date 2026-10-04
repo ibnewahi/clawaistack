@@ -50,7 +50,7 @@ export default function Header({
   const [userProfile, setUserProfile] = useState({
     name: 'Misbahullah',
     email: 'misbah312@gmail.com',
-    role: 'Fractional CFO / Consultant'
+    professionalTitle: null
   });
 
   const companyMenuRef = useRef(null);
@@ -71,14 +71,14 @@ export default function Header({
           // 1. Fetch User Profile & Tier
           const { data: profileData } = await supabase
             .from('profiles')
-            .select('full_name, role, tier')
+            .select('full_name, professional_title, tier')
             .eq('id', user.id)
             .single();
 
           setUserProfile({
             name: profileData?.full_name || user.user_metadata?.full_name || 'Misbahullah',
             email: user.email || 'misbah312@gmail.com',
-            role: profileData?.role || 'Fractional CFO / Consultant'
+            professionalTitle: profileData?.professional_title ?? null
           });
 
           if (profileData?.tier) {
@@ -107,7 +107,7 @@ export default function Header({
         await supabase.from('profiles').upsert({
           id: user.id,
           full_name: userProfile.name,
-          role: userProfile.role,
+          professional_title: userProfile.professionalTitle || null,
           updated_at: new Date().toISOString()
         });
       }
@@ -610,7 +610,9 @@ export default function Header({
               </div>
               <div className="text-left hidden md:block">
                 <p className="text-xs font-semibold text-white leading-none">{userProfile.name}</p>
-                <p className="text-[10px] text-zinc-400 mt-0.5 leading-none">{userProfile.role}</p>
+                <p className="text-[10px] text-zinc-400 mt-0.5 leading-none">
+                  {userProfile.professionalTitle || 'Professional title not set'}
+                </p>
               </div>
               <ChevronDown className={`h-3.5 w-3.5 text-zinc-500 ml-1 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -655,11 +657,11 @@ export default function Header({
                   </div>
 
                   <div>
-                    <label className="block text-zinc-400 mb-1 font-medium text-[11px]">Professional Title / Role</label>
+                    <label className="block text-zinc-400 mb-1 font-medium text-[11px]">Professional Title</label>
                     <input 
                       type="text" 
-                      value={userProfile.role}
-                      onChange={(e) => setUserProfile({...userProfile, role: e.target.value})}
+                      value={userProfile.professionalTitle || ''}
+                      onChange={(e) => setUserProfile({...userProfile, professionalTitle: e.target.value})}
                       className="w-full bg-[#090a0f] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-100 focus:border-emerald-500 outline-none"
                       placeholder="e.g. Fractional CFO / Consultant"
                     />

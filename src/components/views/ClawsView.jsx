@@ -45,7 +45,7 @@ export default function ClawsView({
           if (user) {
             const { data } = await supabase
               .from('profiles')
-              .select('full_name, role, tier')
+              .select('tier')
               .eq('id', user.id)
               .single();
             
