@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabase';
 
 export default function PricingPage() {
   const [currentTier, setCurrentTier] = useState('starter');
-  const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
 
   // Fetch the user's current tier on load using the correct 'profiles' table
@@ -26,30 +25,8 @@ export default function PricingPage() {
     fetchUserTier();
   }, []);
 
-  // Handle tier upgrade action targeting the 'profiles' table
-  const handleUpgrade = async (newTier) => {
-    setIsLoading(true);
-    setMessage('');
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No authenticated user found.');
-
-      // Update the user profile tier in the correct 'profiles' table
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({ id: user.id, tier: newTier, updated_at: new Date() });
-
-      if (error) throw error;
-
-      setCurrentTier(newTier);
-      setMessage(`Successfully updated subscription to ${newTier.toUpperCase()} Tier!`);
-      setIsLoading(false);
-    } catch (err) {
-      console.error('Error updating tier:', err.message);
-      setMessage('Failed to update tier. Please try again.');
-      setIsLoading(false);
-    }
+  const handleUpgrade = () => {
+    setMessage('Plan changes are not available from this page.');
   };
 
   // Synchronized with clean tier keys matching feature gating logic
@@ -134,15 +111,15 @@ export default function PricingPage() {
 
               <div className="mt-8">
                 <button
-                  disabled={isCurrent || isLoading}
-                  onClick={() => handleUpgrade(plan.tierKey)}
+                  disabled={isCurrent}
+                  onClick={handleUpgrade}
                   className={`w-full py-2.5 px-4 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2 ${
                     isCurrent
                       ? 'bg-zinc-800 text-zinc-500 cursor-default'
                       : 'bg-emerald-500 text-[#090a0f] hover:bg-emerald-400 disabled:opacity-50'
                   }`}
                 >
-                  {isCurrent ? 'Active Plan' : `Upgrade to ${plan.name}`}
+                  {isCurrent ? 'Active Plan' : 'Plan changes unavailable'}
                 </button>
               </div>
             </div>
