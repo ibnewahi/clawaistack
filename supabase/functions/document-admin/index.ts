@@ -95,7 +95,7 @@ const resolveUuid = (value: unknown) =>
 
 const normalizeMimeType = (value: string) => value.trim().toLowerCase();
 
-const resolveTrustedObjectLocation = (
+export const resolveTrustedObjectLocation = (
   objectPath: unknown,
   organizationId: string,
   workspaceId: string,
@@ -153,7 +153,7 @@ const sanitizeFilename = (name: string, extension: string) => {
   return `${sanitizedStem || "document"}.${extension}`;
 };
 
-const resolveFileMetadata = (value: unknown): FileMetadata | null => {
+export const resolveFileMetadata = (value: unknown): FileMetadata | null => {
   if (!isRecord(value) || Object.keys(value).length !== 3) return null;
   const name = value.name;
   const mimeType = value.mimeType;
@@ -185,7 +185,11 @@ const resolveFileMetadata = (value: unknown): FileMetadata | null => {
   };
 };
 
-serve(async (req) => {
+export async function handleDocumentRequest(
+  req: Request,
+  clientFactory: typeof createClient = createClient,
+  readEnv: (name: string) => string | undefined = (name) => Deno.env.get(name),
+) {
   const origin = req.headers.get("Origin");
   const corsHeaders = corsHeadersForOrigin(origin);
   const jsonResponse = (body: Record<string, unknown>, status: number) =>
@@ -205,14 +209,14 @@ serve(async (req) => {
   const accessToken = bearerMatch?.[1]?.trim();
   if (!accessToken) return jsonResponse({ success: false, error: "Unauthorized" }, 401);
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  const supabaseUrl = readEnv("SUPABASE_URL");
+  const supabaseAnonKey = readEnv("SUPABASE_ANON_KEY");
   if (!supabaseUrl || !supabaseAnonKey) {
     safeServerLog("unknown", "auth_configuration");
     return jsonResponse({ error: "Internal server error" }, 500);
   }
 
-  const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+  const supabaseUser = clientFactory(supabaseUrl, supabaseAnonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
     global: { headers: { Authorization: `Bearer ${accessToken}` } },
   });
@@ -259,12 +263,12 @@ serve(async (req) => {
     }
     if (permitted !== true) return jsonResponse({ error: "Forbidden" }, 403);
 
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const serviceRoleKey = readEnv("SUPABASE_SERVICE_ROLE_KEY");
     if (!serviceRoleKey) {
       safeServerLog(action, "server_configuration");
       return jsonResponse({ error: "Internal server error" }, 500);
     }
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+    const supabaseAdmin = clientFactory(supabaseUrl, serviceRoleKey);
 
     const { data: workspace, error: workspaceError } = await supabaseAdmin
       .from("workspaces")
@@ -334,9 +338,14 @@ serve(async (req) => {
         return jsonResponse({ error: "Document unavailable" }, 404);
       }
 
+      const objectLocation = resolveTrustedObjectLocation(document.object_path, organizationId, workspaceId, documentId)!;
+      const extension = objectLocation.fileName.split(".").pop()?.toLowerCase() ?? "";
+      const downloadFilename = FILE_TYPES[extension]
+        ? sanitizeFilename(objectLocation.fileName, extension)
+        : "document";
       const { data: signedDownload, error: signedDownloadError } = await supabaseAdmin.storage
         .from(DOCUMENT_BUCKET)
-        .createSignedUrl(document.object_path, SIGNED_DOWNLOAD_URL_TTL_SECONDS);
+        .createSignedUrl(document.object_path, SIGNED_DOWNLOAD_URL_TTL_SECONDS, { download: downloadFilename });
       if (signedDownloadError || typeof signedDownload?.signedUrl !== "string" || !signedDownload.signedUrl) {
         safeServerLog(action, "signed_download_authorization");
         return jsonResponse({ error: "Internal server error" }, 500);
@@ -577,4 +586,6 @@ serve(async (req) => {
     safeServerLog(action, "unexpected_error");
     return jsonResponse({ error: "Internal server error" }, 500);
   }
-});
+}
+
+if (import.meta.main) serve((req) => handleDocumentRequest(req));
